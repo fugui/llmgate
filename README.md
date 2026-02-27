@@ -1,202 +1,217 @@
-# LLM Gate
+# LLMGate - 企业内部 LLM 管理平台
 
-A Go-based API Gateway for routing LLM (Large Language Model) API calls to different providers including OpenAI, Claude, and Azure OpenAI.
+LLMGate 是一个为企业内部提供统一 LLM 服务入口的管理平台，实现用户管理、权限控制、配额计费和审计追踪。
 
-## Features
+## 核心功能
 
-- **Multi-Provider Routing**: Distribute API calls across multiple LLM providers
-- **Rate Limiting**: Configurable per-IP and global rate limiting
-- **Request/Response Logging**: Structured logging with JSON or text format
-- **Health Monitoring**: Health check endpoint for monitoring provider status
-- **Automatic Failover**: Retry requests with alternate providers on failure
-- **CORS Support**: Built-in CORS handling for web applications
-- **Graceful Shutdown**: Clean shutdown with request draining
+- **用户管理**：JWT 认证、角色管理（管理员/经理/普通用户）
+- **API Key 管理**：用户自助创建/删除 API Key
+- **模型管理**：支持多个后端 LLM 服务器的负载均衡
+- **配额控制**：速率限制、Token 配额、并发控制
+- **审计日志**：完整的请求日志（7天自动清理）
 
-## Quick Start
+## 技术栈
 
-### Prerequisites
+- **后端**: Go + Gin
+- **数据库**: PostgreSQL
+- **缓存**: Redis
+- **部署**: Docker + Docker Compose
 
-- Go 1.21 or later
-- API keys for desired LLM providers
+## 快速开始
 
-### Installation
+### 使用 Docker Compose
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd llmgate
+# 启动服务
+docker-compose up -d
 
-# Install dependencies
-go mod download
-
-# Set environment variables
-export OPENAI_API_KEY="your-openai-key"
-export ANTHROPIC_API_KEY="your-anthropic-key"
-# Optional: export AZURE_OPENAI_KEY="your-azure-key"
-
-# Run the server
-go run main.go -config config.yaml
+# 查看日志
+docker-compose logs -f server
 ```
 
-### Configuration
+### 本地开发
 
-Create a `config.yaml` file:
+```bash
+# 安装依赖
+go mod tidy
+
+# 配置数据库
+cp config.yaml config.local.yaml
+# 编辑 config.local.yaml 设置数据库连接
+
+# 运行服务
+go run cmd/server/main.go
+```
+
+### 默认管理员账号
+
+- **邮箱**: admin@llmgate.local
+- **密码**: admin123
+
+## API 接口
+
+### 认证接口
+
+```bash
+# 登录
+POST /api/v1/auth/login
+{
+  "email": "user@example.com",
+  "password": "password"
+}
+
+# 注册
+POST /api/v1/auth/register
+{
+  "email": "user@example.com",
+  "password": "password",
+  "name": "User Name"
+}
+```
+
+### API Key 管理
+
+```bash
+# 创建 API Key
+POST /api/v1/user/keys
+{
+  "name": "开发测试"
+}
+
+# 列出 API Keys
+GET /api/v1/user/keys
+
+# 删除 API Key
+DELETE /api/v1/user/keys/:id
+```
+
+### LLM 代理接口（OpenAI 兼容）
+
+```bash
+# 列出模型
+GET /v1/models
+
+# 聊天补全
+POST /v1/chat/completions
+Authorization: Bearer your-api-key
+{
+  "model": "llama3-70b",
+  "messages": [{"role": "user", "content": "Hello"}]
+}
+```
+
+### 管理接口
+
+```bash
+# 用户管理
+GET    /api/v1/admin/users
+POST   /api/v1/admin/users
+PUT    /api/v1/admin/users/:id
+DELETE /api/v1/admin/users/:id
+
+# 模型管理
+GET    /api/v1/admin/models
+POST   /api/v1/admin/models
+PUT    /api/v1/admin/models/:id
+DELETE /api/v1/admin/models/:id
+
+# 配额策略
+GET    /api/v1/admin/policies
+POST   /api/v1/admin/policies
+PUT    /api/v1/admin/policies/:name
+DELETE /api/v1/admin/policies/:name
+```
+
+## 配置说明
+
+### config.yaml
 
 ```yaml
 server:
   port: 8080
-  read_timeout: 30s
-  write_timeout: 30s
+  mode: "release"  # debug 或 release
 
-providers:
-  openai:
-    base_url: "https://api.openai.com/v1"
-    api_key: "${OPENAI_API_KEY}"
-    timeout: 60s
-    priority: 1
-  claude:
-    base_url: "https://api.anthropic.com/v1"
-    api_key: "${ANTHROPIC_API_KEY}"
-    timeout: 60s
-    priority: 2
+database:
+  host: "localhost"
+  port: 5432
+  user: "llmgate"
+  password: "llmgate_pass"
+  dbname: "llmgate"
 
-rate_limit:
-  enabled: true
-  requests_per_second: 10
-  burst_size: 20
+redis:
+  host: "localhost"
+  port: 6379
 
-logging:
-  level: "info"
-  format: "json"
-  request_logging: true
+jwt:
+  secret: "your-jwt-secret-key"
+  expire_hours: 24
+
+# LLM 后端配置
+models:
+  - id: "llama3-70b"
+    name: "Llama 3 70B"
+    backend: "http://llm-server-1:8000"
+    enabled: true
+    weight: 1
+  - id: "qwen-72b"
+    name: "Qwen 72B"
+    backend: "http://llm-server-2:8000"
+    enabled: true
+    weight: 1
+
+# 配额策略
+quota_policies:
+  - name: "default"
+    rate_limit: 60          # 每分钟请求数
+    rate_limit_window: 60   # 窗口秒数
+    token_quota_daily: 100000
+    models: ["llama3-70b", "qwen-72b"]
 ```
 
-## Usage
-
-### Send Requests
-
-Once running, send requests to the gateway:
-
-```bash
-# OpenAI-style chat completion
-curl -X POST http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-token" \
-  -d '{
-    "model": "gpt-4",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-
-# Claude-style messages
-curl -X POST http://localhost:8080/v1/messages \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-anthropic-key" \
-  -d '{
-    "model": "claude-3-opus-20240229",
-    "max_tokens": 1024,
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-### Health Check
-
-```bash
-curl http://localhost:8080/health
-```
-
-## API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `/v1/chat/completions` | OpenAI chat completions (routes to OpenAI/Azure/Claude) |
-| `/v1/completions` | OpenAI completions (routes to OpenAI/Azure) |
-| `/v1/messages` | Claude messages API (routes to Claude) |
-| `/health` | Health check endpoint |
-
-## Routing Logic
-
-The gateway routes requests based on path matching:
-
-1. `/v1/chat/completions` → OpenAI → Azure → Claude
-2. `/v1/completions` → OpenAI → Azure
-3. `/v1/messages` → Claude
-
-If a provider returns a 5xx error, the gateway automatically tries the next provider in the chain.
-
-## Configuration Options
-
-### Server
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `port` | 8080 | HTTP server port |
-| `read_timeout` | 30s | Request read timeout |
-| `write_timeout` | 30s | Response write timeout |
-| `idle_timeout` | 120s | Keep-alive timeout |
-
-### Rate Limiting
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `enabled` | true | Enable rate limiting |
-| `requests_per_second` | 10 | Rate limit per IP |
-| `burst_size` | 20 | Burst capacity |
-| `per_ip` | true | Apply limits per IP address |
-
-### Logging
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `level` | info | Log level (debug/info/warn/error) |
-| `format` | json | Output format (json/text) |
-| `output` | stdout | Output destination (stdout/file) |
-| `request_logging` | true | Log HTTP requests |
-| `response_logging` | true | Log response bodies (debug only) |
-
-## Project Structure
+## 项目结构
 
 ```
 llmgate/
-├── main.go                      # Application entry point
-├── go.mod                       # Go module definition
-├── config.yaml                  # Default configuration
-├── README.md                    # This file
-└── internal/
-    ├── config/                  # Configuration management
-    │   └── config.go
-    ├── gateway/                 # Request routing and proxying
-    │   └── gateway.go
-    ├── logging/                 # Request/response logging
-    │   └── logger.go
-    └── ratelimit/               # Rate limiting
-        └── ratelimiter.go
+├── cmd/server/           # 主入口
+├── internal/
+│   ├── auth/            # JWT 认证
+│   ├── user/            # 用户管理
+│   ├── apikey/          # API Key 管理
+│   ├── model/           # 模型管理
+│   ├── quota/           # 配额检查
+│   ├── proxy/           # LLM 代理
+│   ├── usage/           # 使用记录
+│   ├── db/              # 数据库连接
+│   ├── middleware/      # 中间件
+│   ├── config/          # 配置管理
+│   └── models/          # 数据模型
+├── migrations/          # 数据库迁移
+├── config.yaml          # 配置文件
+├── docker-compose.yml   # Docker Compose 配置
+└── README.md
 ```
 
-## Development
+## 数据库表结构
 
-### Run Tests
+- **users**: 用户表
+- **api_keys**: API Key 表
+- **models**: 模型配置表
+- **quota_policies**: 配额策略表
+- **usage_records**: 使用记录表（分区表，7天保留）
+- **quota_usage_daily**: 每日配额使用统计
 
-```bash
-go test ./...
-```
+## 开发计划
 
-### Build Binary
-
-```bash
-go build -o llmgate .
-```
-
-### Docker
-
-```bash
-docker build -t llmgate .
-docker run -p 8080:8080 -e OPENAI_API_KEY=$OPENAI_API_KEY llmgate
-```
+- [x] 用户认证（JWT）
+- [x] API Key 管理
+- [x] 模型管理
+- [x] 配额检查
+- [x] 负载均衡
+- [x] 使用记录
+- [ ] Web 管理界面（React）
+- [ ] 企业 SSO 集成
+- [ ] 实时监控仪表盘
 
 ## License
 
-MIT License
-
-## Contributing
-
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+MIT

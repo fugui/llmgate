@@ -1,68 +1,52 @@
-.PHONY: build run test clean docker-build docker-run help
+.PHONY: build run test clean docker-up docker-down migrate lint fmt deps
 
-# Variables
+# 变量
 BINARY_NAME=llmgate
-DOCKER_IMAGE=llmgate:latest
-GO=go
+DOCKER_COMPOSE=docker-compose
 
-# Default target
-all: build
-
-## build: Build the binary
+# 构建
 build:
-	$(GO) build -o $(BINARY_NAME) .
+	go build -o $(BINARY_NAME) cmd/server/main.go
 
-## run: Build and run the server
-run: build
-	./$(BINARY_NAME) -config config.yaml
+# 运行开发服务器
+run:
+	go run cmd/server/main.go
 
-## dev: Run in development mode
-dev:
-	$(GO) run . -config config.yaml
-
-## test: Run all tests
+# 运行测试
 test:
-	$(GO) test -v ./...
+	go test -v ./...
 
-## test-coverage: Run tests with coverage
-test-coverage:
-	$(GO) test -coverprofile=coverage.out ./...
-	$(GO) tool cover -html=coverage.out -o coverage.html
-
-## clean: Remove build artifacts
+# 清理
 clean:
 	rm -f $(BINARY_NAME)
-	rm -f coverage.out coverage.html
+	go clean
 
-## deps: Download dependencies
-deps:
-	$(GO) mod download
-	$(GO) mod tidy
+# Docker 命令
+docker-up:
+	$(DOCKER_COMPOSE) up -d
 
-## docker-build: Build Docker image
+docker-down:
+	$(DOCKER_COMPOSE) down
+
+docker-logs:
+	$(DOCKER_COMPOSE) logs -f server
+
 docker-build:
-	docker build -t $(DOCKER_IMAGE) .
+	$(DOCKER_COMPOSE) build
 
-## docker-run: Run Docker container
-docker-run:
-	docker run -p 8080:8080 \
-		-e OPENAI_API_KEY=$${OPENAI_API_KEY} \
-		-e ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY} \
-		$(DOCKER_IMAGE)
+# 数据库迁移（手动执行 SQL）
+migrate:
+	psql -h localhost -U llmgate -d llmgate -f migrations/001_init.sql
 
-## fmt: Format Go code
-fmt:
-	$(GO) fmt ./...
-
-## vet: Run go vet
-vet:
-	$(GO) vet ./...
-
-## lint: Run linter (requires golangci-lint)
+# 代码检查
 lint:
 	golangci-lint run
 
-## help: Show this help
-help:
-	@echo "Available targets:"
-	@grep -E '^##' $(MAKEFILE_LIST) | sed 's/## //g'
+# 格式化代码
+fmt:
+	go fmt ./...
+
+# 安装依赖
+deps:
+	go mod download
+	go mod tidy

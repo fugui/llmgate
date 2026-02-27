@@ -1,46 +1,58 @@
 server:
   port: 8080
-  read_timeout: 30s
-  write_timeout: 30s
-  idle_timeout: 120s
+  mode: "release"
 
-providers:
-  openai:
-    base_url: "https://api.openai.com/v1"
-    api_key: "${OPENAI_API_KEY}"
-    timeout: 60s
-    priority: 1
-  claude:
-    base_url: "https://api.anthropic.com/v1"
-    api_key: "${ANTHROPIC_API_KEY}"
-    timeout: 60s
-    priority: 2
-  azure:
-    base_url: "${AZURE_OPENAI_ENDPOINT}"
-    api_key: "${AZURE_OPENAI_KEY}"
-    timeout: 60s
-    priority: 3
+database:
+  host: "localhost"
+  port: 5432
+  user: "llmgate"
+  password: "llmgate_pass"
+  dbname: "llmgate"
+  sslmode: "disable"
 
-routing:
-  default_provider: "openai"
-  rules:
-    - path: "/v1/chat/completions"
-      providers: ["openai", "azure", "claude"]
-    - path: "/v1/completions"
-      providers: ["openai", "azure"]
-    - path: "/v1/messages"
-      providers: ["claude"]
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
 
-rate_limit:
-  enabled: true
-  requests_per_second: 10
-  burst_size: 20
-  per_ip: true
+jwt:
+  secret: "your-jwt-secret-key-change-this-in-production"
+  expire_hours: 24
 
-logging:
-  level: "info"
-  format: "json"
-  output: "stdout"
-  file_path: ""
-  request_logging: true
-  response_logging: true
+models:
+  - id: "llama3-70b"
+    name: "Llama 3 70B"
+    backend: "http://localhost:8001"
+    enabled: true
+    weight: 1
+  - id: "qwen-72b"
+    name: "Qwen 72B"
+    backend: "http://localhost:8002"
+    enabled: true
+    weight: 1
+  - id: "deepseek-67b"
+    name: "DeepSeek 67B"
+    backend: "http://localhost:8003"
+    enabled: true
+    weight: 1
+
+quota_policies:
+  - name: "default"
+    rate_limit: 60
+    rate_limit_window: 60
+    token_quota_daily: 100000
+    models:
+      - "llama3-70b"
+      - "qwen-72b"
+      - "deepseek-67b"
+  - name: "vip"
+    rate_limit: 300
+    rate_limit_window: 60
+    token_quota_daily: 1000000
+    models:
+      - "*"
+
+admin:
+  default_email: "admin@llmgate.local"
+  default_password: "admin123"

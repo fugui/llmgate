@@ -3,142 +3,101 @@ package config
 import (
 	"fmt"
 	"os"
-	"regexp"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds the complete application configuration
 type Config struct {
-	Server    ServerConfig             `yaml:"server"`
-	Providers map[string]ProviderConfig `yaml:"providers"`
-	Routing   RoutingConfig            `yaml:"routing"`
-	RateLimit RateLimitConfig          `yaml:"rate_limit"`
-	Logging   LoggingConfig            `yaml:"logging"`
+	Server   ServerConfig   `yaml:"server"`
+	Database DatabaseConfig `yaml:"database"`
+	Redis    RedisConfig    `yaml:"redis"`
+	JWT      JWTConfig      `yaml:"jwt"`
+	Models   []ModelConfig  `yaml:"models"`
+	Policies []PolicyConfig `yaml:"quota_policies"`
+	Admin    AdminConfig    `yaml:"admin"`
 }
 
-// ServerConfig holds HTTP server configuration
 type ServerConfig struct {
-	Port         int           `yaml:"port"`
-	ReadTimeout  time.Duration `yaml:"read_timeout"`
-	WriteTimeout time.Duration `yaml:"write_timeout"`
-	IdleTimeout  time.Duration `yaml:"idle_timeout"`
+	Port int    `yaml:"port"`
+	Mode string `yaml:"mode"`
 }
 
-// ProviderConfig holds LLM provider configuration
-type ProviderConfig struct {
-	BaseURL  string        `yaml:"base_url"`
-	APIKey   string        `yaml:"api_key"`
-	Timeout  time.Duration `yaml:"timeout"`
-	Priority int           `yaml:"priority"`
+type DatabaseConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  string `yaml:"sslmode"`
 }
 
-// RoutingRule defines routing rules for specific paths
-type RoutingRule struct {
-	Path      string   `yaml:"path"`
-	Providers []string `yaml:"providers"`
+type RedisConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
 }
 
-// RoutingConfig holds request routing configuration
-type RoutingConfig struct {
-	DefaultProvider string        `yaml:"default_provider"`
-	Rules           []RoutingRule `yaml:"rules"`
+type JWTConfig struct {
+	Secret      string `yaml:"secret"`
+	ExpireHours int    `yaml:"expire_hours"`
 }
 
-// RateLimitConfig holds rate limiting configuration
-type RateLimitConfig struct {
-	Enabled           bool  `yaml:"enabled"`
-	RequestsPerSecond int   `yaml:"requests_per_second"`
-	BurstSize         int   `yaml:"burst_size"`
-	PerIP             bool  `yaml:"per_ip"`
+type ModelConfig struct {
+	ID      string `yaml:"id"`
+	Name    string `yaml:"name"`
+	Backend string `yaml:"backend"`
+	Enabled bool   `yaml:"enabled"`
+	Weight  int    `yaml:"weight"`
 }
 
-// LoggingConfig holds logging configuration
-type LoggingConfig struct {
-	Level          string `yaml:"level"`
-	Format         string `yaml:"format"`
-	Output         string `yaml:"output"`
-	FilePath       string `yaml:"file_path"`
-	RequestLogging bool   `yaml:"request_logging"`
-	ResponseLogging bool  `yaml:"response_logging"`
+type PolicyConfig struct {
+	Name            string   `yaml:"name"`
+	RateLimit       int      `yaml:"rate_limit"`
+	RateLimitWindow int      `yaml:"rate_limit_window"`
+	TokenQuotaDaily int64    `yaml:"token_quota_daily"`
+	Models          []string `yaml:"models"`
+	Description     string   `yaml:"description"`
 }
 
-var envVarRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
+type AdminConfig struct {
+	DefaultEmail    string `yaml:"default_email"`
+	DefaultPassword string `yaml:"default_password"`
+}
 
-// Load reads configuration from the specified file path
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Expand environment variables
-	expanded := expandEnvVars(string(data))
-
 	var cfg Config
-	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	// Set defaults
-	setDefaults(&cfg)
+	if cfg.Server.Port == 0 {
+		cfg.Server.Port = 8080
+	}
+	if cfg.Server.Mode == "" {
+		cfg.Server.Mode = "release"
+	}
+	if cfg.JWT.Secret == "" {
+		cfg.JWT.Secret = "default-secret-change-in-production"
+	}
+	if cfg.JWT.ExpireHours == 0 {
+		cfg.JWT.ExpireHours = 24
+	}
 
 	return &cfg, nil
 }
 
-func expandEnvVars(content string) string {
-	return envVarRegex.ReplaceAllStringFunc(content, func(match string) string {
-		varName := match[2 : len(match)-1] // Remove ${ and }
-		if value := os.Getenv(varName); value != "" {
-			return value
-		}
-		return match
-	})
+func (c *DatabaseConfig) DSN() string {
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode)
 }
 
-func setDefaults(cfg *Config) {
-	if cfg.Server.Port == 0 {
-		cfg.Server.Port = 8080
-	}
-	if cfg.Server.ReadTimeout == 0 {
-		cfg.Server.ReadTimeout = 30 * time.Second
-	}
-	if cfg.Server.WriteTimeout == 0 {
-		cfg.Server.WriteTimeout = 30 * time.Second
-	}
-	if cfg.Server.IdleTimeout == 0 {
-		cfg.Server.IdleTimeout = 120 * time.Second
-	}
-	if cfg.RateLimit.RequestsPerSecond == 0 {
-		cfg.RateLimit.RequestsPerSecond = 10
-	}
-	if cfg.RateLimit.BurstSize == 0 {
-		cfg.RateLimit.BurstSize = 20
-	}
-	if cfg.Logging.Level == "" {
-		cfg.Logging.Level = "info"
-	}
-	if cfg.Logging.Format == "" {
-		cfg.Logging.Format = "json"
-	}
-	if cfg.Logging.Output == "" {
-		cfg.Logging.Output = "stdout"
-	}
-}
-
-// GetProvider returns the configuration for a specific provider
-func (c *Config) GetProvider(name string) (ProviderConfig, bool) {
-	provider, ok := c.Providers[name]
-	return provider, ok
-}
-
-// GetRoutingRule returns the routing rule for a given path
-func (c *Config) GetRoutingRule(path string) *RoutingRule {
-	for _, rule := range c.Routing.Rules {
-		if rule.Path == path {
-			return &rule
-		}
-	}
-	return nil
+func (c *RedisConfig) Addr() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }

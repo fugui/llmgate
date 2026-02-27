@@ -1,0 +1,4 @@
+# llmgate/internal/apikey
+internal/apikey/handler.go:111:12: cannot use proxy (variable of type Proxy) as *Proxy value in struct literal: Proxy does not implement *Proxy (type *Proxy is pointer to interface, not interface)
+internal/apikey/handler.go:153:10: h.proxy.HandleListModels undefined (type *Proxy is pointer to interface, not interface)
+internal/apikey/handler.go:163:10: h.proxy.HandleChatCompletions undefined (type *Proxy is pointer to interface, not interface)

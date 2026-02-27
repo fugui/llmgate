@@ -1,34 +1,35 @@
-# Build stage
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies
+# 安装依赖
 RUN apk add --no-cache git
 
-# Copy go mod files
+# 复制依赖文件
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
+# 复制源代码
 COPY . .
 
-# Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o llmgate .
+# 编译
+RUN CGO_ENABLED=0 GOOS=linux go build -o server cmd/server/main.go
 
-# Final stage
+# 生产镜像
 FROM alpine:latest
 
+WORKDIR /app
+
+# 安装 ca-certificates 用于 HTTPS
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
-
-# Copy binary from builder
-COPY --from=builder /app/llmgate .
+# 复制二进制文件和配置文件
+COPY --from=builder /app/server .
 COPY --from=builder /app/config.yaml .
+COPY --from=builder /app/migrations ./migrations
 
-# Expose port
+# 暴露端口
 EXPOSE 8080
 
-# Run the binary
-CMD ["./llmgate", "-config", "config.yaml"]
+# 运行
+CMD ["./server"]
