@@ -122,7 +122,7 @@ func main() {
 	api := r.Group("/api/v1")
 
 	// 注册各模块路由
-	userHandler := user.NewHandler(userStore, jwtManager)
+	userHandler := user.NewHandler(userStore, jwtManager, cfg.Frontend.FeedbackURL, cfg.Frontend.DevManualURL)
 	userHandler.RegisterRoutes(api)
 
 	apiKeyHandler := apikey.NewHandler(apiKeyService)

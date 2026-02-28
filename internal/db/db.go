@@ -87,28 +87,8 @@ CREATE TABLE IF NOT EXISTS quota_policies (
     description TEXT
 );
 
--- 使用记录表
-CREATE TABLE IF NOT EXISTS usage_records (
-    id TEXT PRIMARY KEY,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    user_id TEXT NOT NULL,
-    api_key_id TEXT,
-    model_id TEXT NOT NULL,
-    backend_url TEXT,
-    input_tokens INTEGER DEFAULT 0,
-    output_tokens INTEGER DEFAULT 0,
-    latency_ms INTEGER,
-    status_code INTEGER,
-    error_msg TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
-);
-
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
-CREATE INDEX IF NOT EXISTS idx_usage_records_user_id ON usage_records(user_id);
-CREATE INDEX IF NOT EXISTS idx_usage_records_timestamp ON usage_records(timestamp);
-CREATE INDEX IF NOT EXISTS idx_usage_records_api_key_id ON usage_records(api_key_id);
 `
 
 	_, err := db.Exec(schema)

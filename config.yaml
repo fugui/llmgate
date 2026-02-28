@@ -49,3 +49,8 @@ admin:
 logs:
   path: "logs"
   retention_days: 7
+
+# 前端配置
+frontend:
+  feedback_url: "https://feedback.example.com"      # 用户反馈链接
+  dev_manual_url: "https://docs.example.com"        # 开发手册链接

@@ -11,14 +11,18 @@ import (
 )
 
 type Handler struct {
-	store      *models.UserStore
-	jwtManager *auth.JWTManager
+	store          *models.UserStore
+	jwtManager     *auth.JWTManager
+	feedbackURL    string
+	devManualURL   string
 }
 
-func NewHandler(store *models.UserStore, jwtManager *auth.JWTManager) *Handler {
+func NewHandler(store *models.UserStore, jwtManager *auth.JWTManager, feedbackURL, devManualURL string) *Handler {
 	return &Handler{
-		store:      store,
-		jwtManager: jwtManager,
+		store:        store,
+		jwtManager:   jwtManager,
+		feedbackURL:  feedbackURL,
+		devManualURL: devManualURL,
 	}
 }
 
@@ -26,6 +30,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	// 公开接口
 	r.POST("/auth/login", h.Login)
 	r.POST("/auth/register", h.Register)
+	r.GET("/config/frontend", h.GetFrontendConfig)
 
 	// 需要认证的接口
 	auth := r.Group("")
@@ -321,4 +326,13 @@ func (h *Handler) GetQuota(c *gin.Context) {
 func (h *Handler) GetUsage(c *gin.Context) {
 	// TODO: 实现使用记录查询
 	c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+}
+
+func (h *Handler) GetFrontendConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"feedback_url":  h.feedbackURL,
+			"dev_manual_url": h.devManualURL,
+		},
+	})
 }

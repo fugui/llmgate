@@ -15,6 +15,7 @@ type Config struct {
 	Policies []PolicyConfig `yaml:"quota_policies"`
 	Admin    AdminConfig    `yaml:"admin"`
 	Logs     LogConfig      `yaml:"logs"`
+	Frontend FrontendConfig `yaml:"frontend"`
 }
 
 type ServerConfig struct {
@@ -56,6 +57,11 @@ type PolicyConfig struct {
 type AdminConfig struct {
 	DefaultEmail    string `yaml:"default_email"`
 	DefaultPassword string `yaml:"default_password"`
+}
+
+type FrontendConfig struct {
+	FeedbackURL  string `yaml:"feedback_url"`
+	DevManualURL string `yaml:"dev_manual_url"`
 }
 
 func Load(path string) (*Config, error) {
