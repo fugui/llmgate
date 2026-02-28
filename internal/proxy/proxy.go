@@ -1,14 +1,18 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/pkoukk/tiktoken-go"
 	"llmgate/internal/models"
 	"llmgate/internal/quota"
 	"llmgate/internal/usage"
@@ -28,7 +32,7 @@ func NewProxy(lb *RoundRobinBalancer, quotaService *quota.Service, usageService 
 		lb:           lb,
 		quotaService: quotaService,
 		usageService: usageService,
-		httpClient:   &http.Client{Timeout: 120 * time.Second},
+		httpClient:   &http.Client{Timeout: 300 * time.Second},
 		modelStore:   modelStore,
 	}
 }
@@ -52,6 +56,21 @@ type OpenAIResponse struct {
 		CompletionTokens int `json:"completion_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
+}
+
+// StreamResponse 流式响应格式
+type StreamResponse struct {
+	ID      string                   `json:"id"`
+	Object  string                   `json:"object"`
+	Created int64                    `json:"created"`
+	Model   string                   `json:"model"`
+	Choices []StreamChoice           `json:"choices"`
+}
+
+type StreamChoice struct {
+	Index        int                    `json:"index"`
+	Delta        map[string]interface{} `json:"delta"`
+	FinishReason *string                `json:"finish_reason"`
 }
 
 func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID uuid.UUID) {
@@ -125,6 +144,16 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 
 	p.lb.MarkSuccess(backend)
 
+	// 根据是否流式响应选择处理方式
+	if req.Stream {
+		p.handleStreamResponse(c, resp, userID, modelID, startTime, bodyBytes)
+	} else {
+		p.handleNormalResponse(c, resp, userID, modelID, startTime, bodyBytes)
+	}
+}
+
+// handleNormalResponse 处理非流式响应
+func (p *Proxy) handleNormalResponse(c *gin.Context, resp *http.Response, userID uuid.UUID, modelID string, startTime time.Time, reqBody []byte) {
 	// 读取响应
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -140,12 +169,12 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 		outputTokens = openAIResp.Usage.CompletionTokens
 	}
 
-	// 如果没有 usage 信息，估算 token 数
+	// 如果没有 usage 信息，使用 tiktoken 计算
 	if inputTokens == 0 {
-		inputTokens = estimateTokens(string(bodyBytes))
+		inputTokens = countTokensFromRequest(reqBody, modelID)
 	}
 	if outputTokens == 0 {
-		outputTokens = len(respBody) / 4 // 粗略估计
+		outputTokens = countTokens(string(respBody), modelID)
 	}
 
 	latency := int(time.Since(startTime).Milliseconds())
@@ -158,6 +187,76 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 
 	// 返回响应
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
+}
+
+// handleStreamResponse 处理流式响应（SSE）
+func (p *Proxy) handleStreamResponse(c *gin.Context, resp *http.Response, userID uuid.UUID, modelID string, startTime time.Time, reqBody []byte) {
+	// 设置 SSE 响应头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(resp.StatusCode)
+
+	// 用于统计生成的内容
+	var fullContent strings.Builder
+	var outputTokens int
+	var inputTokens int
+
+	// 计算输入 token
+	inputTokens = countTokensFromRequest(reqBody, modelID)
+
+	// 创建 reader
+	reader := bufio.NewReader(resp.Body)
+
+	// 流式转发
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			// 记录错误但不中断
+			fmt.Printf("Error reading stream: %v\n", err)
+			break
+		}
+
+		// 解析内容用于统计
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			data = strings.TrimSpace(data)
+			
+			if data == "[DONE]" {
+				// 流结束
+				c.Writer.WriteString(line)
+				c.Writer.Flush()
+				break
+			}
+
+			var streamResp StreamResponse
+			if err := json.Unmarshal([]byte(data), &streamResp); err == nil {
+				for _, choice := range streamResp.Choices {
+					if content, ok := choice.Delta["content"].(string); ok {
+						fullContent.WriteString(content)
+					}
+				}
+			}
+		}
+
+		// 转发给客户端
+		c.Writer.WriteString(line)
+		c.Writer.Flush()
+	}
+
+	// 计算输出 token
+	outputTokens = countTokens(fullContent.String(), modelID)
+
+	latency := int(time.Since(startTime).Milliseconds())
+
+	// 记录使用
+	p.usageService.RecordUsage(userID, modelID, inputTokens, outputTokens, latency)
+
+	// 扣除配额
+	_ = p.quotaService.DeductQuota(userID, modelID, inputTokens, outputTokens)
 }
 
 func (p *Proxy) HandleListModels(c *gin.Context) {
@@ -183,7 +282,47 @@ func (p *Proxy) HandleListModels(c *gin.Context) {
 	})
 }
 
-// 简单估算 token 数（4 个字符约等于 1 个 token）
-func estimateTokens(text string) int {
-	return len(text) / 4
+// countTokens 使用 tiktoken 计算 token 数
+func countTokens(text string, model string) int {
+	if text == "" {
+		return 0
+	}
+
+	// 尝试获取模型的 encoding
+	encoding, err := tiktoken.EncodingForModel(model)
+	if err != nil {
+		// 如果失败，尝试用 cl100k_base（大多数模型使用）
+		encoding, err = tiktoken.GetEncoding("cl100k_base")
+		if err != nil {
+			// 最后回退到估算
+			return len(text) / 4
+		}
+	}
+
+	tokens := encoding.Encode(text, nil, nil)
+	return len(tokens)
+}
+
+// countTokensFromRequest 从请求体计算输入 token
+func countTokensFromRequest(reqBody []byte, model string) int {
+	var req OpenAIRequest
+	if err := json.Unmarshal(reqBody, &req); err != nil {
+		return len(reqBody) / 4
+	}
+
+	totalTokens := 0
+	
+	// 计算 messages 中的 token
+	for _, msg := range req.Messages {
+		if content, ok := msg["content"].(string); ok {
+			totalTokens += countTokens(content, model)
+		}
+		// 每个 message 有额外的 token 开销（role, 格式等）
+		totalTokens += 4
+	}
+
+	// 额外的系统开销
+	totalTokens += 3
+
+	return totalTokens
 }

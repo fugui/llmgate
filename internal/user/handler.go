@@ -10,17 +10,23 @@ import (
 	"llmgate/internal/models"
 )
 
+type QuotaService interface {
+	GetQuotaStats(userID uuid.UUID) (map[string]interface{}, error)
+}
+
 type Handler struct {
 	store          *models.UserStore
 	jwtManager     *auth.JWTManager
+	quotaService   QuotaService
 	feedbackURL    string
 	devManualURL   string
 }
 
-func NewHandler(store *models.UserStore, jwtManager *auth.JWTManager, feedbackURL, devManualURL string) *Handler {
+func NewHandler(store *models.UserStore, jwtManager *auth.JWTManager, quotaService QuotaService, feedbackURL, devManualURL string) *Handler {
 	return &Handler{
 		store:        store,
 		jwtManager:   jwtManager,
+		quotaService: quotaService,
 		feedbackURL:  feedbackURL,
 		devManualURL: devManualURL,
 	}
@@ -315,12 +321,19 @@ func (h *Handler) Delete(c *gin.Context) {
 }
 
 func (h *Handler) GetQuota(c *gin.Context) {
-	// TODO: 实现配额查询
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{
-		"daily_tokens": 0,
-		"daily_limit":  100000,
-		"reset_time":   "24:00",
-	}})
+	user := middleware.GetCurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	stats, err := h.quotaService.GetQuotaStats(user.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": stats})
 }
 
 func (h *Handler) GetUsage(c *gin.Context) {

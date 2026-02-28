@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Input, Button, Select, Card, message, Space, Tag, Empty, Spin } from 'antd';
+import { Input, Button, Select, message, Space, Tag, Empty, Spin } from 'antd';
 import { SendOutlined, ClearOutlined, StopOutlined, KeyOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
@@ -181,7 +181,7 @@ const Chat: React.FC = () => {
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
         description={
-          <Space direction="vertical" size="large" style={{ textAlign: 'center' }}>
+          <Space orientation="vertical" size="large" style={{ textAlign: 'center' }}>
             <div>
               <KeyOutlined style={{ fontSize: 48, color: '#1890ff' }} />
               <h3 style={{ marginTop: 16 }}>需要 API Key 才能使用聊天功能</h3>
@@ -284,9 +284,9 @@ const Chat: React.FC = () => {
                     {msg.role === 'user' ? '我' : 'AI'}
                   </Tag>
                   {msg.model && msg.role === 'assistant' && (
-                    <Tag size="small" style={{ fontSize: 11 }}>
+                    <span style={{ fontSize: 11, padding: '0 4px', background: '#f0f0f0', borderRadius: 4 }}>
                       {msg.model}
-                    </Tag>
+                    </span>
                   )}
                   <span style={{ fontSize: 11, opacity: 0.6 }}>
                     {msg.timestamp.toLocaleTimeString()}
@@ -295,22 +295,22 @@ const Chat: React.FC = () => {
                 <div style={{ fontSize: 14, lineHeight: 1.7 }}>
                   {msg.role === 'assistant' ? (
                     <div style={{ color: '#333' }}>
-                      <ReactMarkdown 
+                      <ReactMarkdown
                         components={{
-                          code: ({ children }: { children: React.ReactNode }) => (
-                            <code style={{ 
-                              background: '#f0f0f0', 
-                              padding: '2px 6px', 
+                          code: ({ children }: { children?: React.ReactNode }) => (
+                            <code style={{
+                              background: '#f0f0f0',
+                              padding: '2px 6px',
                               borderRadius: 4,
                               fontFamily: 'monospace',
                             }}>
                               {children}
                             </code>
                           ),
-                          pre: ({ children }: { children: React.ReactNode }) => (
-                            <pre style={{ 
-                              background: '#f5f5f5', 
-                              padding: 12, 
+                          pre: ({ children }: { children?: React.ReactNode }) => (
+                            <pre style={{
+                              background: '#f5f5f5',
+                              padding: 12,
                               borderRadius: 8,
                               overflow: 'auto',
                               fontSize: 13,
@@ -320,10 +320,11 @@ const Chat: React.FC = () => {
                           ),
                         }}
                       >
-                        {msg.content || (loading && msg.id === messages[messages.length - 1]?.id ? (
-                          <Spin size="small" />
-                        ) : '')}
+                        {msg.content || ''}
                       </ReactMarkdown>
+                      {loading && msg.id === messages[messages.length - 1]?.id && (
+                        <Spin size="small" style={{ marginLeft: 8 }} />
+                      )}
                     </div>
                   ) : (
                     msg.content
