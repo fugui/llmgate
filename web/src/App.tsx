@@ -8,6 +8,7 @@ import Chat from './pages/Chat';
 import UsageStats from './pages/UsageStats';
 import APIKeyManage from './pages/APIKeyManage';
 import Admin from './pages/Admin';
+import BackendManage from './pages/BackendManage';
 import api from './api';
 import './App.css';
 
@@ -43,6 +44,14 @@ const App: React.FC = () => {
             element={
               <PrivateRoute>
                 <Admin />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/models/:modelId/backends"
+            element={
+              <PrivateRoute>
+                <BackendManage />
               </PrivateRoute>
             }
           />
