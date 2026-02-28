@@ -23,10 +23,9 @@ WORKDIR /app
 # 安装 ca-certificates 用于 HTTPS
 RUN apk --no-cache add ca-certificates
 
-# 复制二进制文件和配置文件
+# 复制二进制文件和配置文件（migrations 已内嵌到代码中）
 COPY --from=builder /app/server .
 COPY --from=builder /app/config.yaml .
-COPY --from=builder /app/migrations ./migrations
 
 # 暴露端口
 EXPOSE 8080

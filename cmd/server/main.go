@@ -19,6 +19,7 @@ import (
 	"llmgate/internal/models"
 	"llmgate/internal/proxy"
 	"llmgate/internal/quota"
+	"llmgate/internal/static"
 	"llmgate/internal/usage"
 	"llmgate/internal/user"
 )
@@ -113,6 +114,9 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
+
+	// 静态文件服务（嵌入的前端页面）
+	r.Use(static.Serve())
 
 	// API v1 路由组
 	api := r.Group("/api/v1")

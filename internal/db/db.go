@@ -3,7 +3,6 @@ package db
 import (
 	"database/sql"
 	"fmt"
-	"os"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -35,14 +34,86 @@ func New(dbPath string) (*DB, error) {
 }
 
 func (db *DB) Migrate() error {
-	sqlBytes, err := os.ReadFile("migrations/001_init.sql")
-	if err != nil {
-		return fmt.Errorf("failed to read migration file: %w", err)
-	}
+	// 内嵌的数据库 schema，无需外部 migrations 目录
+	schema := `
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    department TEXT,
+    quota_policy TEXT DEFAULT 'default',
+    models TEXT, -- JSON 数组
+    enabled BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_login_at DATETIME
+);
 
-	_, err = db.Exec(string(sqlBytes))
+-- API Key 表
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    key_hash TEXT UNIQUE NOT NULL,
+    key_prefix TEXT NOT NULL,
+    models TEXT, -- JSON 数组，null 表示使用用户默认
+    enabled BOOLEAN DEFAULT 1,
+    expires_at DATETIME,
+    last_used_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 模型配置表
+CREATE TABLE IF NOT EXISTS models (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    backend_url TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT 1,
+    weight INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 配额策略表
+CREATE TABLE IF NOT EXISTS quota_policies (
+    name TEXT PRIMARY KEY,
+    rate_limit INTEGER NOT NULL,
+    rate_limit_window INTEGER NOT NULL,
+    token_quota_daily INTEGER,
+    token_quota_monthly INTEGER,
+    models TEXT, -- JSON 数组
+    description TEXT
+);
+
+-- 使用记录表
+CREATE TABLE IF NOT EXISTS usage_records (
+    id TEXT PRIMARY KEY,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    user_id TEXT NOT NULL,
+    api_key_id TEXT,
+    model_id TEXT NOT NULL,
+    backend_url TEXT,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    latency_ms INTEGER,
+    status_code INTEGER,
+    error_msg TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
+);
+
+-- 创建索引
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_usage_records_user_id ON usage_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_usage_records_timestamp ON usage_records(timestamp);
+CREATE INDEX IF NOT EXISTS idx_usage_records_api_key_id ON usage_records(api_key_id);
+`
+
+	_, err := db.Exec(schema)
 	if err != nil {
-		return fmt.Errorf("failed to execute migration: %w", err)
+		return fmt.Errorf("failed to execute schema: %w", err)
 	}
 
 	return nil
