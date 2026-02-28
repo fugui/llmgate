@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Layout, Card, Button, Table, Tag, message, Modal, Form, Input, Descriptions } from 'antd';
 import { PlusOutlined, CopyOutlined, DeleteOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api';
 
 const { Header, Content } = Layout;
 
@@ -23,21 +23,21 @@ const Dashboard: React.FC = () => {
   const [form] = Form.useForm();
   const navigate = useNavigate();
   
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const token = localStorage.getItem('token');
+  const storedUser = localStorage.getItem('user');
+  const user = storedUser && storedUser !== 'undefined' ? JSON.parse(storedUser) : {};
 
-  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  const [messageApi, contextHolder] = message.useMessage();
 
   const fetchData = async () => {
     try {
       const [keysRes, quotaRes] = await Promise.all([
-        axios.get('http://localhost:8080/api/v1/user/keys'),
-        axios.get('http://localhost:8080/api/v1/user/quota'),
+        api.get('/api/v1/user/keys'),
+        api.get('/api/v1/user/quota'),
       ]);
-      setKeys(keysRes.data);
-      setQuota(quotaRes.data);
+      setKeys(keysRes.data.data || []);
+      setQuota(quotaRes.data.data || {});
     } catch (err) {
-      message.error('获取数据失败');
+      messageApi.error('获取数据失败');
     }
   };
 
@@ -47,13 +47,13 @@ const Dashboard: React.FC = () => {
 
   const handleCreate = async (values: { name: string }) => {
     try {
-      const res = await axios.post('http://localhost:8080/api/v1/user/keys', values);
+      const res = await api.post('/api/v1/user/keys', values);
       setNewKey(res.data.key);
       setModalVisible(false);
       form.resetFields();
       fetchData();
     } catch (err) {
-      message.error('创建失败');
+      messageApi.error('创建失败');
     }
   };
 
@@ -63,11 +63,11 @@ const Dashboard: React.FC = () => {
       content: '删除后该 API Key 将无法使用',
       onOk: async () => {
         try {
-          await axios.delete(`http://localhost:8080/api/v1/user/keys/${id}`);
-          message.success('删除成功');
+          await api.delete(`/api/v1/user/keys/${id}`);
+              messageApi.success('删除成功');
           fetchData();
         } catch (err) {
-          message.error('删除失败');
+              messageApi.error('删除失败');
         }
       },
     });
@@ -115,6 +115,7 @@ const Dashboard: React.FC = () => {
         </div>
       </Header>
       <Content style={{ padding: 24 }}>
+        {contextHolder}
         <Card title="配额使用情况" style={{ marginBottom: 24 }}>
           <Descriptions>
             <Descriptions.Item label="速率限制">{quota.rate_limit} 请求/分钟</Descriptions.Item>
@@ -148,7 +149,7 @@ const Dashboard: React.FC = () => {
                 icon={<CopyOutlined />} 
                 onClick={() => {
                   navigator.clipboard.writeText(newKey);
-                  message.success('已复制');
+                  messageApi.success('已复制');
                 }}
               >
                 复制

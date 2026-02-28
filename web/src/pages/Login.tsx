@@ -2,26 +2,36 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Card, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api';
 
 const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // 如果已登录则直接跳转
+  React.useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      navigate('/dashboard');
+    }
+  }, [navigate]);
+
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:8080/api/v1/auth/login', values);
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('user', JSON.stringify(res.data.user));
-      message.success('登录成功');
+      const res = await api.post('/api/v1/auth/login', values);
+      localStorage.setItem('token', res.data.data.token);
+      localStorage.setItem('user', JSON.stringify(res.data.data.user));
+      messageApi.success('登录成功');
       navigate('/dashboard');
     } catch (err: any) {
-      message.error(err.response?.data?.error || '登录失败');
+      messageApi.error(err.response?.data?.error || '登录失败');
     } finally {
       setLoading(false);
     }
   };
+
+  const [messageApi, contextHolder] = message.useMessage();
 
   return (
     <div style={{ 
@@ -32,6 +42,7 @@ const Login: React.FC = () => {
       background: '#f0f2f5'
     }}>
       <Card title="LLMGATE 登录" style={{ width: 400 }}>
+        {contextHolder}
         <Form onFinish={onFinish}>
           <Form.Item 
             name="email" 

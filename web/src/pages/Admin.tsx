@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Layout, Card, Table, Button, Tag, message, Tabs } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api';
 
 const { Header, Content } = Layout;
 
@@ -12,22 +12,21 @@ const Admin: React.FC = () => {
   const [policies, setPolicies] = useState([]);
   const [activeTab, setActiveTab] = useState('users');
   const navigate = useNavigate();
-  const token = localStorage.getItem('token');
 
-  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  const [messageApi, contextHolder] = message.useMessage();
 
   const fetchData = async () => {
     try {
       const [usersRes, modelsRes, policiesRes] = await Promise.all([
-        axios.get('http://localhost:8080/api/v1/admin/users'),
-        axios.get('http://localhost:8080/api/v1/admin/models'),
-        axios.get('http://localhost:8080/api/v1/admin/policies'),
+        api.get('/api/v1/admin/users'),
+        api.get('/api/v1/admin/models'),
+        api.get('/api/v1/admin/policies'),
       ]);
-      setUsers(usersRes.data);
-      setModels(modelsRes.data);
-      setPolicies(policiesRes.data);
+      setUsers(usersRes.data.data || []);
+      setModels(modelsRes.data.data || []);
+      setPolicies(policiesRes.data.data || []);
     } catch (err) {
-      message.error('获取数据失败');
+      messageApi.error('获取数据失败');
     }
   };
 
@@ -84,6 +83,7 @@ const Admin: React.FC = () => {
         </div>
       </Header>
       <Content style={{ padding: 24 }}>
+        {contextHolder}
         <Card>
           <Tabs activeKey={activeTab} onChange={setActiveTab}>
             <Tabs.TabPane tab="用户管理" key="users">
