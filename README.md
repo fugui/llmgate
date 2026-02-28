@@ -3,13 +3,14 @@
 [![Go Version](https://img.shields.io/badge/Go-1.22+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-LLMGate 是一个为企业内部提供统一 LLM 服务入口的管理平台，实现用户管理、权限控制、配额计费和审计追踪。
+LLMGate 是一个为企业内部提供统一 LLM 服务入口的管理平台，实现用户管理、权限控制、配额计费、多后端负载均衡和审计追踪。
 
 ## 核心功能
 
 - **用户管理**：JWT 认证、角色管理（管理员/经理/普通用户）
 - **API Key 管理**：用户自助创建/删除 API Key，支持过期时间和模型限制
-- **模型管理**：支持多个后端 LLM 服务器的负载均衡
+- **多后端架构**：一个模型可配置多个后端实例，支持权重轮询负载均衡
+- **健康检查**：自动检测后端可用性，自动剔除故障节点
 - **配额控制**：速率限制、Token 配额、并发控制
 - **审计日志**：完整的请求日志（7天自动清理）
 - **OpenAI 兼容**：提供与 OpenAI API 兼容的接口
@@ -94,18 +95,49 @@ admin:
   default_email: "admin@llmgate.local"
   default_password: "admin123"
 
-# LLM 后端配置
+# LLM 后端配置 - 支持多后端架构
 models:
-  - id: "llama3-70b"
-    name: "Llama 3 70B"
-    backend: "http://llm-server-1:8000"
+  # 单实例模型配置示例
+  - id: "glm4.7"
+    name: "GLM 4.7"
+    description: "智谱 GLM4.7 模型"
     enabled: true
-    weight: 1
-  - id: "qwen-72b"
-    name: "Qwen 72B"
-    backend: "http://llm-server-2:8000"
+    backends:
+      - id: "glm4.7-prod-01"
+        name: "北京节点-01"
+        base_url: "http://glm4-7.internal:8000"
+        api_key: "glm-api-key-xxx"
+        model_name: "glm4"          # 后端实际模型名
+        weight: 10                   # 权重（用于负载均衡）
+        region: "beijing"
+
+  # 多实例负载均衡配置示例
+  - id: "kimi2.5"
+    name: "Kimi 2.5"
+    description: "Moonshot Kimi 2.5"
     enabled: true
-    weight: 1
+    backends:
+      - id: "kimi2.5-gz-01"
+        name: "广州节点-01"
+        base_url: "http://kimi25-gz-01.internal:8000"
+        api_key: "moonshot-key-gz"
+        model_name: "kimi2.5_guangzhou"
+        weight: 20
+        region: "guangzhou"
+      - id: "kimi2.5-gz-02"
+        name: "广州节点-02"
+        base_url: "http://kimi25-gz-02.internal:8000"
+        api_key: "moonshot-key-gz"
+        model_name: "kimi2.5_guangzhou"
+        weight: 20
+        region: "guangzhou"
+      - id: "kimi2.5-bj-01"
+        name: "北京节点-01"
+        base_url: "http://kimi25-bj-01.internal:8000"
+        api_key: "moonshot-key-bj"
+        model_name: "kimi2.5_beijing"
+        weight: 15
+        region: "beijing"
 
 # 配额策略
 quota_policies:
@@ -114,7 +146,29 @@ quota_policies:
     rate_limit_window: 60       # 窗口秒数
     token_quota_daily: 100000   # 每日 Token 上限
     models: ["*"]               # "*" 表示所有模型
+  - name: "vip"
+    rate_limit: 300
+    token_quota_daily: 1000000
+    models: ["*"]
+
+# 前端配置
+frontend:
+  feedback_url: "https://feedback.example.com"
+  dev_manual_url: "https://docs.example.com"
 ```
+
+### Backend 配置字段说明
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `id` | 是 | 后端唯一标识 |
+| `name` | 否 | 后端显示名称 |
+| `base_url` | 是 | LLM 后端服务地址 |
+| `api_key` | 否 | 后端 API 认证密钥 |
+| `model_name` | 否 | 后端实际模型名称（转发时使用）|
+| `weight` | 否 | 负载均衡权重，默认 1 |
+| `region` | 否 | 地域标识 |
+| `enabled` | 否 | 是否启用，默认 true |
 
 ## API 接口
 
@@ -154,7 +208,7 @@ Content-Type: application/json
 
 {
   "name": "开发测试",
-  "models": ["llama3-70b"],
+  "models": ["glm4.7", "kimi2.5"],
   "expires_at": "2024-12-31T23:59:59Z"
 }
 
@@ -180,7 +234,7 @@ Authorization: Bearer <api-key>
 Content-Type: application/json
 
 {
-  "model": "llama3-70b",
+  "model": "kimi2.5",
   "messages": [
     {"role": "user", "content": "Hello, how are you?"}
   ],
@@ -191,24 +245,57 @@ Content-Type: application/json
 
 ### 管理接口
 
+#### 用户管理
 ```bash
-# 用户管理
 GET    /api/v1/admin/users          # 列出用户
 POST   /api/v1/admin/users          # 创建用户
 PUT    /api/v1/admin/users/:id      # 更新用户
 DELETE /api/v1/admin/users/:id      # 删除用户
+```
 
-# 模型管理
-GET    /api/v1/admin/models
-POST   /api/v1/admin/models
-PUT    /api/v1/admin/models/:id
-DELETE /api/v1/admin/models/:id
+#### 模型管理
+```bash
+GET    /api/v1/admin/models              # 列出模型
+POST   /api/v1/admin/models              # 创建模型
+PUT    /api/v1/admin/models/:id          # 更新模型
+DELETE /api/v1/admin/models/:id          # 删除模型
+GET    /api/v1/admin/models/:id/backends # 获取模型后端列表
+```
 
-# 配额策略管理
+#### 后端管理
+```bash
+GET    /api/v1/admin/backends              # 列出所有后端
+POST   /api/v1/admin/models/:id/backends   # 为模型添加后端
+PUT    /api/v1/admin/backends/:id          # 更新后端
+DELETE /api/v1/admin/backends/:id          # 删除后端
+POST   /api/v1/admin/backends/:id/health   # 手动健康检查
+```
+
+#### 配额策略管理
+```bash
 GET    /api/v1/admin/policies
 POST   /api/v1/admin/policies
 PUT    /api/v1/admin/policies/:name
 DELETE /api/v1/admin/policies/:name
+```
+
+### 后端数据结构
+
+```typescript
+interface Backend {
+  id: string;
+  model_id: string;
+  name: string;
+  base_url: string;
+  model_name: string;
+  weight: number;
+  region: string;
+  enabled: boolean;
+  healthy: boolean;        // 健康状态
+  last_check_at: string;   // 最后检查时间
+  created_at: string;
+  updated_at: string;
+}
 ```
 
 ## 项目结构
@@ -224,18 +311,37 @@ llmgate/
 │   ├── db/                 # 数据库（SQLite）
 │   ├── logger/             # 日志记录
 │   ├── middleware/         # HTTP 中间件
-│   ├── model/              # 模型管理
-│   ├── models/             # 数据模型定义
+│   ├── model/              # 模型 HTTP 处理
+│   ├── models/             # 数据模型定义（Model, Backend, User...）
 │   ├── proxy/              # LLM 代理和负载均衡
 │   ├── quota/              # 配额检查
 │   ├── static/             # 静态文件嵌入
 │   ├── usage/              # 使用记录
 │   └── user/               # 用户管理
-├── web/                    # Web 前端（React + TS）
+├── web/                    # Web 前端（React + TS + Ant Design）
 ├── config.yaml             # 配置文件
 ├── Makefile                # 构建脚本
 └── README.md
 ```
+
+## 负载均衡与健康检查
+
+### 负载均衡策略
+
+LLMGate 采用**权重轮询**算法进行负载均衡：
+
+1. 根据后端 `weight` 值计算选择概率
+2. 优先选择健康（`healthy=true`）的后端
+3. 如果所有后端都不健康，返回 503 错误
+
+示例：三个后端权重分别为 20, 20, 15，则选择概率为 36%, 36%, 28%
+
+### 健康检查机制
+
+- **自动检查**：系统定期（默认 30 秒）检查所有后端健康状态
+- **手动检查**：管理员可通过 API 或 Web 界面触发检查
+- **故障转移**：后端标记为不健康后自动剔除，恢复后自动加入
+- **检查方式**：向后端发送轻量级探测请求
 
 ## 构建命令
 
@@ -267,6 +373,7 @@ go test ./test/scenarios/... -cover
 - ✅ 配额限制（日配额超限、多模型配额）
 - ✅ API Key 生命周期（过期、禁用、用户禁用）
 - ✅ 速率限制与并发控制
+- ✅ 负载均衡与后端故障转移
 
 ## 部署建议
 
@@ -291,17 +398,68 @@ server {
         proxy_pass http://localhost:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # WebSocket 支持（用于流式响应）
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # 超时设置
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
     }
 }
 ```
+
+### 多实例高可用部署
+
+```
+                    ┌─────────────┐
+                    │   Nginx     │
+                    │  (负载均衡)  │
+                    └──────┬──────┘
+                           │
+           ┌───────────────┼───────────────┐
+           │               │               │
+      ┌────┴────┐     ┌────┴────┐     ┌────┴────┐
+      │LLMGate  │     │LLMGate  │     │LLMGate  │
+      │Instance1│     │Instance2│     │Instance3│
+      └────┬────┘     └────┬────┘     └────┬────┘
+           │               │               │
+           └───────────────┼───────────────┘
+                           │
+                    ┌──────┴──────┐
+                    │  SQLite     │
+                    │  (共享存储)  │
+                    └─────────────┘
+```
+
+**注意**：多实例部署需要使用共享存储（如 NFS）存放 SQLite 数据库文件。
 
 ## 安全建议
 
 1. **修改默认密码**：首次登录后立即修改管理员密码
 2. **更换 JWT Secret**：生产环境务必使用强密钥
 3. **启用 HTTPS**：使用 Nginx 或 Caddy 提供 HTTPS
-4. **定期备份**：备份 SQLite 数据库文件
-5. **日志审计**：定期检查日志目录的访问记录
+4. **API Key 保护**：不要将 API Key 硬编码在客户端代码中
+5. **定期备份**：备份 SQLite 数据库文件
+6. **日志审计**：定期检查日志目录的访问记录
+7. **网络隔离**：LLM 后端服务应部署在内网，通过 LLMGate 统一暴露
+
+## 版本历史
+
+### v0.2.0 (2025-03)
+- ✨ 重构为多后端架构，支持负载均衡
+- ✨ 新增后端健康检查机制
+- ✨ 支持按地域分配后端
+- ♻️ 配置格式更新（向后兼容）
+
+### v0.1.0 (2025-02)
+- 🎉 初始版本发布
+- ✨ 用户管理、API Key 管理
+- ✨ 配额控制和审计日志
+- ✨ OpenAI 兼容接口
 
 ## License
 
