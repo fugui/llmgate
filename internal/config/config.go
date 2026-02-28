@@ -38,11 +38,22 @@ type LogConfig struct {
 }
 
 type ModelConfig struct {
-	ID      string `yaml:"id"`
-	Name    string `yaml:"name"`
-	Backend string `yaml:"backend"`
-	Enabled bool   `yaml:"enabled"`
-	Weight  int    `yaml:"weight"`
+	ID          string          `yaml:"id"`
+	Name        string          `yaml:"name"`
+	Description string          `yaml:"description"`
+	Enabled     bool            `yaml:"enabled"`
+	Backends    []BackendConfig `yaml:"backends"`
+}
+
+type BackendConfig struct {
+	ID        string `yaml:"id"`
+	Name      string `yaml:"name"`
+	BaseURL   string `yaml:"base_url"`
+	APIKey    string `yaml:"api_key"`
+	ModelName string `yaml:"model_name"`
+	Weight    int    `yaml:"weight"`
+	Region    string `yaml:"region"`
+	Enabled   bool   `yaml:"enabled"`
 }
 
 type PolicyConfig struct {

@@ -25,15 +25,17 @@ type Proxy struct {
 	usageService *usage.Service
 	httpClient   *http.Client
 	modelStore   *models.ModelStore
+	backendStore *models.BackendStore
 }
 
-func NewProxy(lb *RoundRobinBalancer, quotaService *quota.Service, usageService *usage.Service, modelStore *models.ModelStore) *Proxy {
+func NewProxy(lb *RoundRobinBalancer, quotaService *quota.Service, usageService *usage.Service, modelStore *models.ModelStore, backendStore *models.BackendStore) *Proxy {
 	return &Proxy{
 		lb:           lb,
 		quotaService: quotaService,
 		usageService: usageService,
 		httpClient:   &http.Client{Timeout: 300 * time.Second},
 		modelStore:   modelStore,
+		backendStore: backendStore,
 	}
 }
 
@@ -118,9 +120,15 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 		return
 	}
 
+	// 修改请求体以替换 model 名称
+	requestBody := bodyBytes
+	if backend.ModelName != "" {
+		requestBody = modifyRequestModel(bodyBytes, backend.ModelName)
+	}
+
 	// 转发请求
-	url := backend + "/v1/chat/completions"
-	proxyReq, err := http.NewRequest(c.Request.Method, url, bytes.NewReader(bodyBytes))
+	url := backend.URL + "/v1/chat/completions"
+	proxyReq, err := http.NewRequest(c.Request.Method, url, bytes.NewReader(requestBody))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create proxy request"})
 		return
@@ -133,16 +141,24 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 		}
 	}
 
+	// 添加后端认证（如果有）
+	if backend.APIKey != "" {
+		proxyReq.Header.Set("Authorization", "Bearer "+backend.APIKey)
+	}
+
+	// 更新 Content-Length
+	proxyReq.ContentLength = int64(len(requestBody))
+
 	// 发送请求
 	resp, err := p.httpClient.Do(proxyReq)
 	if err != nil {
-		p.lb.MarkFailed(backend)
+		p.lb.MarkFailed(backend.ID)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "backend request failed: " + err.Error()})
 		return
 	}
 	defer resp.Body.Close()
 
-	p.lb.MarkSuccess(backend)
+	p.lb.MarkSuccess(backend.ID)
 
 	// 根据是否流式响应选择处理方式
 	if req.Stream {
@@ -311,7 +327,7 @@ func countTokensFromRequest(reqBody []byte, model string) int {
 	}
 
 	totalTokens := 0
-	
+
 	// 计算 messages 中的 token
 	for _, msg := range req.Messages {
 		if content, ok := msg["content"].(string); ok {
@@ -325,4 +341,24 @@ func countTokensFromRequest(reqBody []byte, model string) int {
 	totalTokens += 3
 
 	return totalTokens
+}
+
+// modifyRequestModel modifies the request body to replace the model name
+func modifyRequestModel(reqBody []byte, modelName string) []byte {
+	var req map[string]interface{}
+	if err := json.Unmarshal(reqBody, &req); err != nil {
+		// 如果解析失败，返回原始请求体
+		return reqBody
+	}
+
+	// 替换 model 名称
+	req["model"] = modelName
+
+	// 重新序列化
+	modifiedBody, err := json.Marshal(req)
+	if err != nil {
+		return reqBody
+	}
+
+	return modifiedBody
 }

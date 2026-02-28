@@ -8,28 +8,35 @@ import (
 type Model struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
-	BackendURL  string    `json:"backend_url"`
-	Enabled     bool      `json:"enabled"`
-	Weight      int       `json:"weight"`
 	Description string    `json:"description"`
+	Enabled     bool      `json:"enabled"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type ModelCreateRequest struct {
-	ID          string `json:"id" binding:"required"`
-	Name        string `json:"name" binding:"required"`
-	BackendURL  string `json:"backend_url" binding:"required,url"`
-	Weight      int    `json:"weight"`
-	Description string `json:"description"`
+	ID          string               `json:"id" binding:"required"`
+	Name        string               `json:"name" binding:"required"`
+	Description string               `json:"description"`
+	Enabled     bool                 `json:"enabled"`
+	Backends    []BackendCreateInput `json:"backends"`
 }
 
 type ModelUpdateRequest struct {
 	Name        string `json:"name"`
-	BackendURL  string `json:"backend_url" binding:"omitempty,url"`
-	Enabled     *bool  `json:"enabled"`
-	Weight      int    `json:"weight"`
 	Description string `json:"description"`
+	Enabled     *bool  `json:"enabled"`
+}
+
+type BackendCreateInput struct {
+	ID        string `json:"id" binding:"required"`
+	Name      string `json:"name"`
+	BaseURL   string `json:"base_url" binding:"required,url"`
+	APIKey    string `json:"api_key"`
+	ModelName string `json:"model_name"`
+	Weight    int    `json:"weight"`
+	Region    string `json:"region"`
+	Enabled   bool   `json:"enabled"`
 }
 
 // ModelStore 模型配置数据访问层
@@ -43,32 +50,29 @@ func NewModelStore(db *sql.DB) *ModelStore {
 
 func (s *ModelStore) Create(model *Model) error {
 	query := `
-		INSERT INTO models (id, name, backend_url, enabled, weight, description)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO models (id, name, description, enabled)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
-			backend_url = excluded.backend_url,
-			enabled = excluded.enabled,
-			weight = excluded.weight,
 			description = excluded.description,
+			enabled = excluded.enabled,
 			updated_at = CURRENT_TIMESTAMP
 		RETURNING created_at, updated_at`
 
 	return s.db.QueryRow(query,
-		model.ID, model.Name, model.BackendURL, model.Enabled,
-		model.Weight, model.Description,
+		model.ID, model.Name, model.Description, model.Enabled,
 	).Scan(&model.CreatedAt, &model.UpdatedAt)
 }
 
 func (s *ModelStore) GetByID(id string) (*Model, error) {
 	model := &Model{}
 	query := `
-		SELECT id, name, backend_url, enabled, weight, description, created_at, updated_at
+		SELECT id, name, description, enabled, created_at, updated_at
 		FROM models WHERE id = ?`
 
 	err := s.db.QueryRow(query, id).Scan(
-		&model.ID, &model.Name, &model.BackendURL, &model.Enabled,
-		&model.Weight, &model.Description, &model.CreatedAt, &model.UpdatedAt,
+		&model.ID, &model.Name, &model.Description, &model.Enabled,
+		&model.CreatedAt, &model.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -78,7 +82,7 @@ func (s *ModelStore) GetByID(id string) (*Model, error) {
 
 func (s *ModelStore) List() ([]*Model, error) {
 	query := `
-		SELECT id, name, backend_url, enabled, weight, description, created_at, updated_at
+		SELECT id, name, description, enabled, created_at, updated_at
 		FROM models ORDER BY created_at`
 
 	rows, err := s.db.Query(query)
@@ -91,8 +95,8 @@ func (s *ModelStore) List() ([]*Model, error) {
 	for rows.Next() {
 		model := &Model{}
 		err := rows.Scan(
-			&model.ID, &model.Name, &model.BackendURL, &model.Enabled,
-			&model.Weight, &model.Description, &model.CreatedAt, &model.UpdatedAt,
+			&model.ID, &model.Name, &model.Description, &model.Enabled,
+			&model.CreatedAt, &model.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -104,8 +108,8 @@ func (s *ModelStore) List() ([]*Model, error) {
 
 func (s *ModelStore) ListEnabled() ([]*Model, error) {
 	query := `
-		SELECT id, name, backend_url, enabled, weight, description, created_at, updated_at
-		FROM models WHERE enabled = 1 ORDER BY weight DESC`
+		SELECT id, name, description, enabled, created_at, updated_at
+		FROM models WHERE enabled = 1 ORDER BY created_at`
 
 	rows, err := s.db.Query(query)
 	if err != nil {
@@ -117,8 +121,8 @@ func (s *ModelStore) ListEnabled() ([]*Model, error) {
 	for rows.Next() {
 		model := &Model{}
 		err := rows.Scan(
-			&model.ID, &model.Name, &model.BackendURL, &model.Enabled,
-			&model.Weight, &model.Description, &model.CreatedAt, &model.UpdatedAt,
+			&model.ID, &model.Name, &model.Description, &model.Enabled,
+			&model.CreatedAt, &model.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -131,13 +135,11 @@ func (s *ModelStore) ListEnabled() ([]*Model, error) {
 func (s *ModelStore) Update(model *Model) error {
 	query := `
 		UPDATE models SET
-			name = ?, backend_url = ?, enabled = ?, weight = ?,
-			description = ?, updated_at = CURRENT_TIMESTAMP
+			name = ?, description = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`
 
 	_, err := s.db.Exec(query,
-		model.Name, model.BackendURL, model.Enabled, model.Weight,
-		model.Description, model.ID,
+		model.Name, model.Description, model.Enabled, model.ID,
 	)
 	return err
 }

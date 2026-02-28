@@ -19,7 +19,9 @@ type LoadBalancer interface {
 
 // BackendHealth 后端健康状态
 type BackendHealth struct {
+	BackendID string    `json:"backend_id"`
 	URL       string    `json:"url"`
+	ModelName string    `json:"model_name"`
 	Healthy   bool      `json:"healthy"`
 	LastCheck time.Time `json:"last_check"`
 	FailCount int       `json:"fail_count"`
@@ -35,9 +37,13 @@ type RoundRobinBalancer struct {
 	httpClient *http.Client
 }
 
+// Backend represents a backend instance with metadata
 type Backend struct {
-	URL    string
-	Weight int
+	ID        string
+	URL       string
+	Weight    int
+	ModelName string // The actual model name used by the backend
+	APIKey    string // API key for backend authentication
 }
 
 func NewRoundRobinBalancer() *RoundRobinBalancer {
@@ -54,11 +60,13 @@ func (lb *RoundRobinBalancer) AddBackend(modelID string, backend Backend) {
 	defer lb.mu.Unlock()
 
 	lb.backends[modelID] = append(lb.backends[modelID], backend)
-	
-	// 初始化健康状态
-	if _, exists := lb.health[backend.URL]; !exists {
-		lb.health[backend.URL] = &BackendHealth{
+
+	// 初始化健康状态 - 使用 backend ID 作为 key
+	if _, exists := lb.health[backend.ID]; !exists {
+		lb.health[backend.ID] = &BackendHealth{
+			BackendID: backend.ID,
 			URL:       backend.URL,
+			ModelName: backend.ModelName,
 			Healthy:   true,
 			LastCheck: time.Now(),
 		}
@@ -70,13 +78,13 @@ func (lb *RoundRobinBalancer) AddBackend(modelID string, backend Backend) {
 	}
 }
 
-func (lb *RoundRobinBalancer) Next(modelID string) (string, bool) {
+func (lb *RoundRobinBalancer) Next(modelID string) (*Backend, bool) {
 	lb.mu.RLock()
 	defer lb.mu.RUnlock()
 
 	backends, exists := lb.backends[modelID]
 	if !exists || len(backends) == 0 {
-		return "", false
+		return nil, false
 	}
 
 	// 找到健康的后端
@@ -87,43 +95,44 @@ func (lb *RoundRobinBalancer) Next(modelID string) (string, bool) {
 		idx := atomic.AddUint32(counter, 1) % uint32(len(backends))
 		backend := backends[idx]
 
-		if health, ok := lb.health[backend.URL]; ok && health.Healthy {
-			return backend.URL, true
+		if health, ok := lb.health[backend.ID]; ok && health.Healthy {
+			return &backend, true
 		}
 	}
 
 	// 所有后端都不健康，返回第一个（降级）
-	return backends[0].URL, true
+	return &backends[0], true
 }
 
-func (lb *RoundRobinBalancer) MarkFailed(backend string) {
+func (lb *RoundRobinBalancer) MarkFailed(backendID string) {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
-	
-	if health, exists := lb.health[backend]; exists {
+
+	if health, exists := lb.health[backendID]; exists {
 		health.Healthy = false
 		health.FailCount++
 	}
 }
 
-func (lb *RoundRobinBalancer) MarkSuccess(backend string) {
+func (lb *RoundRobinBalancer) MarkSuccess(backendID string) {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
-	
-	if health, exists := lb.health[backend]; exists {
+
+	if health, exists := lb.health[backendID]; exists {
 		health.Healthy = true
 		health.FailCount = 0
 	}
 }
 
-func (lb *RoundRobinBalancer) GetHealthyBackends(modelID string) []string {
+func (lb *RoundRobinBalancer) GetHealthyBackends(modelID string) []*Backend {
 	lb.mu.RLock()
 	defer lb.mu.RUnlock()
 
-	var healthy []string
-	for _, backend := range lb.backends[modelID] {
-		if health, ok := lb.health[backend.URL]; ok && health.Healthy {
-			healthy = append(healthy, backend.URL)
+	var healthy []*Backend
+	for i := range lb.backends[modelID] {
+		backend := &lb.backends[modelID][i]
+		if health, ok := lb.health[backend.ID]; ok && health.Healthy {
+			healthy = append(healthy, backend)
 		}
 	}
 	return healthy
@@ -135,9 +144,11 @@ func (lb *RoundRobinBalancer) GetHealthStatus() map[string]BackendHealth {
 	defer lb.mu.RUnlock()
 
 	status := make(map[string]BackendHealth)
-	for url, health := range lb.health {
-		status[url] = BackendHealth{
+	for id, health := range lb.health {
+		status[id] = BackendHealth{
+			BackendID: health.BackendID,
 			URL:       health.URL,
+			ModelName: health.ModelName,
 			Healthy:   health.Healthy,
 			LastCheck: health.LastCheck,
 			FailCount: health.FailCount,
@@ -148,13 +159,22 @@ func (lb *RoundRobinBalancer) GetHealthStatus() map[string]BackendHealth {
 }
 
 // CheckHealth 检查单个后端的健康状态
-func (lb *RoundRobinBalancer) CheckHealth(backendURL string) bool {
+func (lb *RoundRobinBalancer) CheckHealth(backendID string) bool {
+	lb.mu.RLock()
+	backendHealth, exists := lb.health[backendID]
+	if !exists {
+		lb.mu.RUnlock()
+		return false
+	}
+	backendURL := backendHealth.URL
+	lb.mu.RUnlock()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// 构造健康检查 URL（尝试 /health 端点，如果不存在则用 /v1/models）
 	healthURL := backendURL + "/health"
-	
+
 	start := time.Now()
 	req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
 	if err != nil {
@@ -167,7 +187,7 @@ func (lb *RoundRobinBalancer) CheckHealth(backendURL string) bool {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 
-	if health, exists := lb.health[backendURL]; exists {
+	if health, exists := lb.health[backendID]; exists {
 		health.LastCheck = time.Now()
 		health.Latency = latency
 
@@ -209,24 +229,22 @@ func (lb *RoundRobinBalancer) StartHealthCheck(interval time.Duration) {
 // runHealthChecks 执行所有后端的健康检查
 func (lb *RoundRobinBalancer) runHealthChecks() {
 	lb.mu.RLock()
-	
-	// 收集所有唯一的后端 URL
-	backendURLs := make(map[string]struct{})
-	for _, backends := range lb.backends {
-		for _, backend := range backends {
-			backendURLs[backend.URL] = struct{}{}
-		}
+
+	// 收集所有唯一的后端 ID
+	backendIDs := make([]string, 0, len(lb.health))
+	for id := range lb.health {
+		backendIDs = append(backendIDs, id)
 	}
 	lb.mu.RUnlock()
 
 	// 并行检查所有后端
 	var wg sync.WaitGroup
-	for url := range backendURLs {
+	for _, id := range backendIDs {
 		wg.Add(1)
-		go func(backendURL string) {
+		go func(backendID string) {
 			defer wg.Done()
-			lb.CheckHealth(backendURL)
-		}(url)
+			lb.CheckHealth(backendID)
+		}(id)
 	}
 	wg.Wait()
 }
@@ -238,9 +256,11 @@ func (lb *RoundRobinBalancer) GetModelBackends(modelID string) []BackendHealth {
 
 	var result []BackendHealth
 	for _, backend := range lb.backends[modelID] {
-		if health, exists := lb.health[backend.URL]; exists {
+		if health, exists := lb.health[backend.ID]; exists {
 			result = append(result, BackendHealth{
+				BackendID: health.BackendID,
 				URL:       health.URL,
+				ModelName: health.ModelName,
 				Healthy:   health.Healthy,
 				LastCheck: health.LastCheck,
 				FailCount: health.FailCount,
@@ -260,7 +280,7 @@ func (lb *RoundRobinBalancer) String() string {
 	for modelID := range lb.backends {
 		models = append(models, modelID)
 	}
-	
+
 	var healthy, unhealthy int
 	for _, health := range lb.health {
 		if health.Healthy {
@@ -270,6 +290,6 @@ func (lb *RoundRobinBalancer) String() string {
 		}
 	}
 
-	return fmt.Sprintf("LoadBalancer[models=%v, healthy=%d, unhealthy=%d]", 
+	return fmt.Sprintf("LoadBalancer[models=%v, healthy=%d, unhealthy=%d]",
 		models, healthy, unhealthy)
 }

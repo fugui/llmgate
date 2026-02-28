@@ -54,6 +54,7 @@ func main() {
 	userStore := models.NewUserStore(database.DB)
 	apiKeyStore := models.NewAPIKeyStore(database.DB)
 	modelStore := models.NewModelStore(database.DB)
+	backendStore := models.NewBackendStore(database.DB)
 	quotaStore := models.NewQuotaStore(database.DB)
 
 	// 初始化 JWT 管理器
@@ -67,39 +68,79 @@ func main() {
 	// 初始化负载均衡器
 	lb := proxy.NewRoundRobinBalancer()
 
-	// 从数据库加载模型配置
-	modelList, err := modelStore.ListEnabled()
+	// 从数据库加载模型和后端配置
+	modelList, err := modelStore.List()
 	if err != nil {
 		log.Fatalf("Failed to load models: %v", err)
 	}
 
-	for _, m := range modelList {
-		lb.AddBackend(m.ID, proxy.Backend{
-			URL:    m.BackendURL,
-			Weight: m.Weight,
-		})
-		log.Printf("Loaded model: %s -> %s", m.ID, m.BackendURL)
-	}
+	// 如果数据库中有模型，加载它们及其后端
+	if len(modelList) > 0 {
+		for _, m := range modelList {
+			// 加载该模型的所有后端
+			backends, err := backendStore.ListByModel(m.ID)
+			if err != nil {
+				log.Printf("Failed to load backends for model %s: %v", m.ID, err)
+				continue
+			}
 
-	// 如果没有模型，从配置文件加载
-	if len(modelList) == 0 {
-		for _, m := range cfg.Models {
-			if m.Enabled {
+			for _, b := range backends {
 				lb.AddBackend(m.ID, proxy.Backend{
-					URL:    m.Backend,
-					Weight: m.Weight,
+					ID:        b.ID,
+					URL:       b.BaseURL,
+					Weight:    b.Weight,
+					ModelName: b.ModelName,
+					APIKey:    b.APIKey,
 				})
-				log.Printf("Loaded model from config: %s -> %s", m.ID, m.Backend)
+				log.Printf("Loaded backend: %s -> %s (model: %s)", m.ID, b.BaseURL, b.ModelName)
+			}
+		}
+	} else {
+		// 从配置文件加载
+		for _, m := range cfg.Models {
+			// 创建模型
+			model := &models.Model{
+				ID:          m.ID,
+				Name:        m.Name,
+				Description: m.Description,
+				Enabled:     m.Enabled,
+			}
+			if err := modelStore.Create(model); err != nil {
+				log.Printf("Failed to create model %s: %v", m.ID, err)
+				continue
+			}
+			log.Printf("Created model: %s", m.ID)
 
-				// 保存到数据库
-				_ = modelStore.Create(&models.Model{
-					ID:          m.ID,
-					Name:        m.Name,
-					BackendURL:  m.Backend,
-					Enabled:     m.Enabled,
-					Weight:      m.Weight,
-					Description: "",
+			// 创建后端
+			for _, b := range m.Backends {
+				backend := &models.Backend{
+					ID:        b.ID,
+					ModelID:   m.ID,
+					Name:      b.Name,
+					BaseURL:   b.BaseURL,
+					APIKey:    b.APIKey,
+					ModelName: b.ModelName,
+					Weight:    b.Weight,
+					Region:    b.Region,
+					Enabled:   b.Enabled,
+				}
+				if backend.Weight == 0 {
+					backend.Weight = 1
+				}
+				if err := backendStore.Create(backend); err != nil {
+					log.Printf("Failed to create backend %s: %v", b.ID, err)
+					continue
+				}
+
+				// 添加到负载均衡器
+				lb.AddBackend(m.ID, proxy.Backend{
+					ID:        b.ID,
+					URL:       b.BaseURL,
+					Weight:    b.Weight,
+					ModelName: b.ModelName,
+					APIKey:    b.APIKey,
 				})
+				log.Printf("Loaded backend from config: %s -> %s (model: %s)", m.ID, b.BaseURL, b.ModelName)
 			}
 		}
 	}
@@ -109,7 +150,7 @@ func main() {
 	log.Printf("Health check started with 30s interval")
 
 	// 初始化代理
-	proxyInstance := proxy.NewProxy(lb, quotaService, usageService, modelStore)
+	proxyInstance := proxy.NewProxy(lb, quotaService, usageService, modelStore, backendStore)
 
 	// 初始化配额策略
 	initQuotaPolicies(quotaStore, cfg.Policies)
@@ -135,7 +176,7 @@ func main() {
 	apiKeyHandler := apikey.NewHandler(apiKeyService, userStore)
 	apiKeyHandler.RegisterRoutes(api, jwtManager)
 
-	modelHandler := model.NewHandler(modelStore, lb, userStore)
+	modelHandler := model.NewHandler(modelStore, backendStore, lb, userStore)
 	modelHandler.RegisterRoutes(api, jwtManager)
 
 	adminHandler := model.NewAdminHandler(quotaStore, userStore)

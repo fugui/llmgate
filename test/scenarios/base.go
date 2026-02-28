@@ -3,10 +3,7 @@ package scenarios
 import (
 	"database/sql"
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"llmgate/internal/apikey"
 	"llmgate/internal/auth"

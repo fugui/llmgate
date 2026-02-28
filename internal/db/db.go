@@ -74,13 +74,32 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE TABLE IF NOT EXISTS models (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    backend_url TEXT NOT NULL,
-    enabled BOOLEAN DEFAULT 1,
-    weight INTEGER DEFAULT 1,
     description TEXT,
+    enabled BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 后端配置表
+CREATE TABLE IF NOT EXISTS backends (
+    id TEXT PRIMARY KEY,
+    model_id TEXT NOT NULL,
+    name TEXT,
+    base_url TEXT NOT NULL,
+    api_key TEXT,
+    model_name TEXT,
+    weight INTEGER DEFAULT 1,
+    region TEXT,
+    enabled BOOLEAN DEFAULT 1,
+    healthy BOOLEAN DEFAULT 1,
+    last_check_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_backends_model_id ON backends(model_id);
+CREATE INDEX IF NOT EXISTS idx_backends_enabled ON backends(enabled);
 
 -- 配额策略表
 CREATE TABLE IF NOT EXISTS quota_policies (
