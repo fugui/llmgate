@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -166,12 +167,27 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 	resp, err := p.httpClient.Do(proxyReq)
 	if err != nil {
 		p.lb.MarkFailed(backend.ID)
-		c.JSON(http.StatusBadGateway, gin.H{"error": "backend request failed: " + err.Error()})
+		// 区分错误类型返回不同状态码
+		if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
+			// 超时错误
+			c.JSON(http.StatusGatewayTimeout, gin.H{"error": "backend request timeout"})
+		} else {
+			// 连接错误或其他错误
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "backend unavailable: " + err.Error()})
+		}
 		return
 	}
 	defer resp.Body.Close()
 
 	p.lb.MarkSuccess(backend.ID)
+
+	// 如果后端返回 429，直接透传
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// 读取响应体并透传
+		respBody, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
+		return
+	}
 
 	// 根据是否流式响应选择处理方式
 	if req.Stream {
