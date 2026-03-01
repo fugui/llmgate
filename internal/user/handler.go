@@ -14,19 +14,26 @@ type QuotaService interface {
 	GetQuotaStats(userID uuid.UUID) (map[string]interface{}, error)
 }
 
+type QuotaStore interface {
+	GetRecentUsageRecords(userID uuid.UUID, days int) ([]map[string]interface{}, error)
+	GetDailyUsageList(userID uuid.UUID, startDate, endDate time.Time) ([]*models.QuotaUsageDaily, error)
+}
+
 type Handler struct {
 	store          *models.UserStore
 	jwtManager     *auth.JWTManager
 	quotaService   QuotaService
+	quotaStore     QuotaStore
 	feedbackURL    string
 	devManualURL   string
 }
 
-func NewHandler(store *models.UserStore, jwtManager *auth.JWTManager, quotaService QuotaService, feedbackURL, devManualURL string) *Handler {
+func NewHandler(store *models.UserStore, jwtManager *auth.JWTManager, quotaService QuotaService, quotaStore QuotaStore, feedbackURL, devManualURL string) *Handler {
 	return &Handler{
 		store:        store,
 		jwtManager:   jwtManager,
 		quotaService: quotaService,
+		quotaStore:   quotaStore,
 		feedbackURL:  feedbackURL,
 		devManualURL: devManualURL,
 	}
@@ -337,8 +344,22 @@ func (h *Handler) GetQuota(c *gin.Context) {
 }
 
 func (h *Handler) GetUsage(c *gin.Context) {
-	// TODO: 实现使用记录查询
-	c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+	user := middleware.GetCurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// 支持查询参数 days，默认 7 天
+	days := 7
+	// 获取最近 N 天的使用统计
+	records, err := h.quotaStore.GetRecentUsageRecords(user.UserID, days)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": records})
 }
 
 func (h *Handler) GetFrontendConfig(c *gin.Context) {

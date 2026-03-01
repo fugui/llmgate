@@ -6,6 +6,7 @@ import api from '../api';
 const UsageStats: React.FC = () => {
   const [quota, setQuota] = useState<any>({});
   const [usageRecords, setUsageRecords] = useState<any[]>([]);
+  const [weeklyData, setWeeklyData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,7 +21,20 @@ const UsageStats: React.FC = () => {
       ]);
 
       setQuota(quotaRes.data.data || {});
-      setUsageRecords(usageRes.data.data || []);
+      const records = usageRes.data.data || [];
+      setUsageRecords(records);
+      
+      // 转换数据为图表格式
+      const chartData = records.map((record: any) => {
+        const date = new Date(record.date);
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        return {
+          date: weekdays[date.getDay()],
+          requests: record.requests,
+          tokens: record.tokens,
+        };
+      }).reverse(); // 按时间正序
+      setWeeklyData(chartData);
     } catch (err) {
       console.error('Failed to fetch usage data:', err);
     } finally {
@@ -28,28 +42,22 @@ const UsageStats: React.FC = () => {
     }
   };
 
-  // 模拟最近7天的使用数据
-  const weeklyData = [
-    { date: '周一', requests: 45, tokens: 12000 },
-    { date: '周二', requests: 52, tokens: 15000 },
-    { date: '周三', requests: 38, tokens: 9800 },
-    { date: '周四', requests: 65, tokens: 21000 },
-    { date: '周五', requests: 48, tokens: 13500 },
-    { date: '周六', requests: 25, tokens: 6500 },
-    { date: '周日', requests: 30, tokens: 8200 },
-  ];
-
   const columns = [
     {
-      title: '时间',
-      dataIndex: 'timestamp',
-      key: 'timestamp',
-      render: (text: string) => new Date(text).toLocaleString(),
+      title: '日期',
+      dataIndex: 'date',
+      key: 'date',
     },
     {
       title: '模型',
       dataIndex: 'model_id',
       key: 'model_id',
+      render: (_: string, record: any) => record.model_id || '-',
+    },
+    {
+      title: '请求数',
+      dataIndex: 'requests',
+      key: 'requests',
     },
     {
       title: '输入 Token',
@@ -62,20 +70,9 @@ const UsageStats: React.FC = () => {
       key: 'output_tokens',
     },
     {
-      title: '耗时',
-      dataIndex: 'latency_ms',
-      key: 'latency_ms',
-      render: (ms: number) => `${ms}ms`,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status_code',
-      key: 'status_code',
-      render: (code: number) => (
-        <Tag color={code === 200 ? 'green' : 'red'}>
-          {code === 200 ? '成功' : '失败'}
-        </Tag>
-      ),
+      title: '总 Token',
+      dataIndex: 'tokens',
+      key: 'tokens',
     },
   ];
 

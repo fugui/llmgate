@@ -179,3 +179,78 @@ func (s *QuotaStore) GetUsageStats(userID uuid.UUID, startDate, endDate time.Tim
 	)
 	return stats, err
 }
+
+// GetDailyUsageList 获取用户指定日期范围内的每日使用列表
+func (s *QuotaStore) GetDailyUsageList(userID uuid.UUID, startDate, endDate time.Time) ([]*QuotaUsageDaily, error) {
+	query := `
+		SELECT id, user_id, date, model_id, request_count, token_count, input_tokens, output_tokens
+		FROM quota_usage_daily
+		WHERE user_id = ? AND date BETWEEN ? AND ?
+		ORDER BY date DESC, model_id`
+
+	rows, err := s.db.Query(query, userID.String(), startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var usages []*QuotaUsageDaily
+	for rows.Next() {
+		usage := &QuotaUsageDaily{}
+		var idStr, userIDStr string
+		err := rows.Scan(
+			&idStr, &userIDStr, &usage.Date, &usage.ModelID,
+			&usage.RequestCount, &usage.TokenCount, &usage.InputTokens, &usage.OutputTokens,
+		)
+		if err != nil {
+			return nil, err
+		}
+		usage.ID = uuid.MustParse(idStr)
+		usage.UserID = uuid.MustParse(userIDStr)
+		usages = append(usages, usage)
+	}
+	return usages, rows.Err()
+}
+
+// GetRecentUsageRecords 获取最近的使用记录（按天汇总）
+func (s *QuotaStore) GetRecentUsageRecords(userID uuid.UUID, days int) ([]map[string]interface{}, error) {
+	endDate := time.Now()
+	startDate := endDate.AddDate(0, 0, -days+1)
+
+	query := `
+		SELECT 
+			date,
+			COALESCE(SUM(request_count), 0) as requests,
+			COALESCE(SUM(token_count), 0) as tokens,
+			COALESCE(SUM(input_tokens), 0) as input_tokens,
+			COALESCE(SUM(output_tokens), 0) as output_tokens
+		FROM quota_usage_daily
+		WHERE user_id = ? AND date >= ?
+		GROUP BY date
+		ORDER BY date DESC`
+
+	rows, err := s.db.Query(query, userID.String(), startDate.Format("2006-01-02"))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []map[string]interface{}
+	for rows.Next() {
+		var date time.Time
+		var requests int
+		var tokens, inputTokens, outputTokens int64
+		err := rows.Scan(&date, &requests, &tokens, &inputTokens, &outputTokens)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, map[string]interface{}{
+			"date":          date.Format("2006-01-02"),
+			"requests":      requests,
+			"tokens":        tokens,
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+		})
+	}
+	return records, rows.Err()
+}
