@@ -175,14 +175,14 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 
 	// 根据是否流式响应选择处理方式
 	if req.Stream {
-		p.handleStreamResponse(c, resp, userID, modelID, startTime, bodyBytes)
+		p.handleStreamResponse(c, resp, userID, modelID, user.QuotaPolicy, startTime, bodyBytes)
 	} else {
-		p.handleNormalResponse(c, resp, userID, modelID, startTime, bodyBytes)
+		p.handleNormalResponse(c, resp, userID, modelID, user.QuotaPolicy, startTime, bodyBytes)
 	}
 }
 
 // handleNormalResponse 处理非流式响应
-func (p *Proxy) handleNormalResponse(c *gin.Context, resp *http.Response, userID uuid.UUID, modelID string, startTime time.Time, reqBody []byte) {
+func (p *Proxy) handleNormalResponse(c *gin.Context, resp *http.Response, userID uuid.UUID, modelID string, quotaPolicy string, startTime time.Time, reqBody []byte) {
 	// 读取响应
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -212,14 +212,14 @@ func (p *Proxy) handleNormalResponse(c *gin.Context, resp *http.Response, userID
 	p.usageService.RecordUsage(userID, modelID, inputTokens, outputTokens, latency)
 
 	// 扣除配额
-	_ = p.quotaService.DeductQuota(userID, modelID, inputTokens, outputTokens)
+	_ = p.quotaService.DeductQuota(userID, quotaPolicy, modelID, inputTokens, outputTokens)
 
 	// 返回响应
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
 }
 
 // handleStreamResponse 处理流式响应（SSE）
-func (p *Proxy) handleStreamResponse(c *gin.Context, resp *http.Response, userID uuid.UUID, modelID string, startTime time.Time, reqBody []byte) {
+func (p *Proxy) handleStreamResponse(c *gin.Context, resp *http.Response, userID uuid.UUID, modelID string, quotaPolicy string, startTime time.Time, reqBody []byte) {
 	// 设置 SSE 响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -285,7 +285,7 @@ func (p *Proxy) handleStreamResponse(c *gin.Context, resp *http.Response, userID
 	p.usageService.RecordUsage(userID, modelID, inputTokens, outputTokens, latency)
 
 	// 扣除配额
-	_ = p.quotaService.DeductQuota(userID, modelID, inputTokens, outputTokens)
+	_ = p.quotaService.DeductQuota(userID, quotaPolicy, modelID, inputTokens, outputTokens)
 }
 
 func (p *Proxy) HandleListModels(c *gin.Context) {
