@@ -2,6 +2,7 @@ package quota
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -88,14 +89,85 @@ func (rc *RateCounter) GetCount(userID string, window int) int {
 }
 
 type Service struct {
-	store  *models.QuotaStore
-	rateCounter *RateCounter
+	store            *models.QuotaStore
+	rateCounter      *RateCounter
+	dailyUsageCache  *DailyUsageCounter
+}
+
+// DailyUsageCounter 每日用量内存计数器
+type DailyUsageCounter struct {
+	counts map[string]int64 // key: user_id:date
+	mu     sync.RWMutex
+}
+
+func NewDailyUsageCounter() *DailyUsageCounter {
+	return &DailyUsageCounter{
+		counts: make(map[string]int64),
+	}
+}
+
+// Get 获取用户当日用量
+func (c *DailyUsageCounter) Get(userID string, date time.Time) (int64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	key := fmt.Sprintf("%s:%s", userID, date.Format("2006-01-02"))
+	val, exists := c.counts[key]
+	return val, exists
+}
+
+// Add 增加用户当日用量
+func (c *DailyUsageCounter) Add(userID string, date time.Time, tokens int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s", userID, date.Format("2006-01-02"))
+	c.counts[key] += tokens
+}
+
+// Set 设置用户当日用量
+func (c *DailyUsageCounter) Set(userID string, date time.Time, tokens int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s", userID, date.Format("2006-01-02"))
+	c.counts[key] = tokens
+}
+
+// CleanupExpired 清理过期缓存（非当日）
+func (c *DailyUsageCounter) CleanupExpired() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	today := time.Now().Format("2006-01-02")
+	for key := range c.counts {
+		// key 格式: user_id:date，检查 date 部分
+		parts := strings.Split(key, ":")
+		if len(parts) == 2 && parts[1] != today {
+			delete(c.counts, key)
+		}
+	}
 }
 
 func NewService(store *models.QuotaStore) *Service {
-	return &Service{
-		store:       store,
-		rateCounter: NewRateCounter(),
+	s := &Service{
+		store:           store,
+		rateCounter:     NewRateCounter(),
+		dailyUsageCache: NewDailyUsageCounter(),
+	}
+	// 启动每日清理任务
+	go s.dailyCleanupLoop()
+	return s
+}
+
+// dailyCleanupLoop 每日清理过期缓存
+func (s *Service) dailyCleanupLoop() {
+	// 每小时检查一次
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.dailyUsageCache.CleanupExpired()
 	}
 }
 
@@ -148,7 +220,8 @@ func (s *Service) CheckQuota(userID uuid.UUID, policyName string, modelID string
 	result.RateRemaining = policy.RateLimit - current - 1
 
 	// 检查 Token 配额
-	dailyTokens, err := s.store.GetDailyUsage(userID, time.Now())
+	today := time.Now()
+	dailyTokens, err := s.getDailyUsageWithCache(userID, today)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +236,24 @@ func (s *Service) CheckQuota(userID uuid.UUID, policyName string, modelID string
 	}
 
 	return result, nil
+}
+
+// getDailyUsageWithCache 获取每日用量（带缓存）
+func (s *Service) getDailyUsageWithCache(userID uuid.UUID, date time.Time) (int64, error) {
+	// 1. 先查缓存
+	if cached, exists := s.dailyUsageCache.Get(userID.String(), date); exists {
+		return cached, nil
+	}
+
+	// 2. 缓存未命中，查数据库
+	dailyTokens, err := s.store.GetDailyUsage(userID, date)
+	if err != nil {
+		return 0, err
+	}
+
+	// 3. 写入缓存
+	s.dailyUsageCache.Set(userID.String(), date, dailyTokens)
+	return dailyTokens, nil
 }
 
 // IncrementRate 增加速率计数
@@ -194,7 +285,16 @@ func (s *Service) DeductQuota(userID uuid.UUID, policyName string, modelID strin
 	}
 
 	// 增加 Token 使用统计
-	return s.store.IncrementUsage(userID, modelID, inputTokens, outputTokens)
+	err = s.store.IncrementUsage(userID, modelID, inputTokens, outputTokens)
+	if err != nil {
+		return err
+	}
+
+	// 更新内存缓存
+	totalTokens := int64(inputTokens + outputTokens)
+	s.dailyUsageCache.Add(userID.String(), time.Now(), totalTokens)
+
+	return nil
 }
 
 // GetQuotaStats 获取配额统计
@@ -212,7 +312,8 @@ func (s *Service) GetQuotaStats(userID uuid.UUID, policyName string) (map[string
 		return nil, fmt.Errorf("policy not found: %s", policyName)
 	}
 
-	dailyTokens, err := s.store.GetDailyUsage(userID, time.Now())
+	// 使用缓存获取每日用量
+	dailyTokens, err := s.getDailyUsageWithCache(userID, time.Now())
 	if err != nil {
 		return nil, err
 	}
