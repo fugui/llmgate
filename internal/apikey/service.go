@@ -97,6 +97,8 @@ func (s *Service) ValidateKey(plainKey string) (*models.APIKey, *models.User, er
 		if !cached.UserInfo.Enabled {
 			return nil, nil, fmt.Errorf("user disabled")
 		}
+		// 异步更新最后使用时间
+		go s.updateLastUsed(cached.Key.ID)
 		return cached.Key, cached.UserInfo, nil
 	}
 
@@ -139,7 +141,31 @@ func (s *Service) ValidateKey(plainKey string) (*models.APIKey, *models.User, er
 	// 3. 写入缓存
 	s.cache.SetAPIKey(keyPrefixStr, key, user)
 
+	// 4. 异步更新最后使用时间（不阻塞请求）
+	go s.updateLastUsed(key.ID)
+
 	return key, user, nil
+}
+
+// updateLastUsed 异步更新 API Key 最后使用时间
+func (s *Service) updateLastUsed(keyID uuid.UUID) {
+	// 使用独立的 goroutine，设置超时避免资源泄漏
+	done := make(chan struct{})
+	go func() {
+		if err := s.store.UpdateLastUsed(keyID); err != nil {
+			// 记录错误但不影响主流程
+			fmt.Printf("Failed to update last_used_at for key %s: %v\n", keyID, err)
+		}
+		close(done)
+	}()
+
+	// 等待最多 100ms，超时则放弃
+	select {
+	case <-done:
+		// 成功更新
+	case <-time.After(100 * time.Millisecond):
+		// 超时，不阻塞
+	}
 }
 
 // GetUserKeys 获取指定用户的所有 API Key
