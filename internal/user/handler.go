@@ -1,12 +1,20 @@
 package user
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"llmgate/internal/auth"
+	"llmgate/internal/config"
 	"llmgate/internal/middleware"
 	"llmgate/internal/models"
 )
@@ -31,19 +39,32 @@ type Handler struct {
 	quotaService   QuotaService
 	quotaStore     QuotaStore
 	cache          Cache
+	ssoConfig      config.SSOConfig
 	feedbackURL    string
 	devManualURL   string
 }
 
-func NewHandler(store *models.UserStore, jwtManager *auth.JWTManager, quotaService QuotaService, quotaStore QuotaStore, c Cache, feedbackURL, devManualURL string) *Handler {
+type NewHandlerParams struct {
+	Store         *models.UserStore
+	JWTManager    *auth.JWTManager
+	QuotaService  QuotaService
+	QuotaStore    QuotaStore
+	Cache         Cache
+	SSOConfig     config.SSOConfig
+	FeedbackURL   string
+	DevManualURL  string
+}
+
+func NewHandler(p NewHandlerParams) *Handler {
 	return &Handler{
-		store:        store,
-		jwtManager:   jwtManager,
-		quotaService: quotaService,
-		quotaStore:   quotaStore,
-		cache:        c,
-		feedbackURL:  feedbackURL,
-		devManualURL: devManualURL,
+		store:         p.Store,
+		jwtManager:    p.JWTManager,
+		quotaService:  p.QuotaService,
+		quotaStore:    p.QuotaStore,
+		cache:         p.Cache,
+		ssoConfig:     p.SSOConfig,
+		feedbackURL:   p.FeedbackURL,
+		devManualURL:  p.DevManualURL,
 	}
 }
 
@@ -52,6 +73,13 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/auth/login", h.Login)
 	r.POST("/auth/register", h.Register)
 	r.GET("/config/frontend", h.GetFrontendConfig)
+
+	// SSO 接口（如果启用）
+	if h.ssoConfig.Enabled {
+		r.GET("/auth/sso/config", h.GetSSOConfig)
+		r.GET("/auth/sso/login", h.SSOLogin)
+		r.GET("/auth/sso/callback", h.SSOCallback)
+	}
 
 	// 需要认证的接口
 	auth := r.Group("")
@@ -396,6 +424,201 @@ func (h *Handler) GetFrontendConfig(c *gin.Context) {
 		"data": gin.H{
 			"feedback_url":   h.feedbackURL,
 			"dev_manual_url": h.devManualURL,
+			"sso_enabled":    h.ssoConfig.Enabled,
 		},
 	})
+}
+
+// ========== SSO 相关接口 ==========
+
+// GetSSOConfig 获取 SSO 配置（供前端使用）
+func (h *Handler) GetSSOConfig(c *gin.Context) {
+	if !h.ssoConfig.Enabled {
+		c.JSON(http.StatusOK, gin.H{"data": nil})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"enabled":  true,
+			"provider": h.ssoConfig.Provider,
+		},
+	})
+}
+
+// generateState 生成随机 state
+func generateState() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+// SSOLogin 跳转至 SSO 登录页
+func (h *Handler) SSOLogin(c *gin.Context) {
+	if !h.ssoConfig.Enabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "SSO not enabled"})
+		return
+	}
+
+	state := generateState()
+	// 将 state 存入 cookie（简化版，生产环境应使用 session/cache）
+	c.SetCookie("sso_state", state, 600, "/", "", false, true)
+
+	// 构建回调 URL
+	callbackURL := fmt.Sprintf("%s/api/v1/auth/sso/callback", c.Request.Host)
+	if c.Request.TLS == nil {
+		callbackURL = "http://" + callbackURL
+	} else {
+		callbackURL = "https://" + callbackURL
+	}
+
+	// 构建授权 URL
+	authURL := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=openid email profile&state=%s",
+		h.ssoConfig.GetAuthorizeURL(),
+		url.QueryEscape(h.ssoConfig.ClientID),
+		url.QueryEscape(callbackURL),
+		state,
+	)
+
+	c.Redirect(http.StatusFound, authURL)
+}
+
+// SSOCallback SSO 回调处理
+func (h *Handler) SSOCallback(c *gin.Context) {
+	if !h.ssoConfig.Enabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "SSO not enabled"})
+		return
+	}
+
+	code := c.Query("code")
+	state := c.Query("state")
+
+	// 验证 state
+	cookieState, err := c.Cookie("sso_state")
+	if err != nil || cookieState != state {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state"})
+		return
+	}
+	c.SetCookie("sso_state", "", -1, "/", "", false, true)
+
+	// 构建回调 URL
+	callbackURL := fmt.Sprintf("%s/api/v1/auth/sso/callback", c.Request.Host)
+	if c.Request.TLS == nil {
+		callbackURL = "http://" + callbackURL
+	} else {
+		callbackURL = "https://" + callbackURL
+	}
+
+	// 用 code 换取 token
+	tokenResp, err := h.exchangeCodeForToken(code, callbackURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "exchange token failed: " + err.Error()})
+		return
+	}
+
+	// 解析 id_token 获取用户信息
+	email, err := h.parseIDToken(tokenResp.IDToken)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "parse id_token failed: " + err.Error()})
+		return
+	}
+
+	// 查找本地用户
+	user, err := h.store.GetByEmail(email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "user not provisioned, please contact admin"})
+		return
+	}
+
+	// 更新最后登录时间
+	h.store.UpdateLastLogin(user.ID)
+
+	// 签发本地 JWT
+	token, err := h.jwtManager.Generate(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "generate token failed"})
+		return
+	}
+
+	// 返回 token（前端存储到 localStorage）
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"token": token,
+			"user":  user.ToResponse(),
+		},
+	})
+}
+
+// TokenResponse OAuth token 响应
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	IDToken      string `json:"id_token"`
+}
+
+// exchangeCodeForToken 用 code 换取 token
+func (h *Handler) exchangeCodeForToken(code, redirectURI string) (*TokenResponse, error) {
+	data := url.Values{}
+	data.Set("grant_type", "authorization_code")
+	data.Set("client_id", h.ssoConfig.ClientID)
+	data.Set("client_secret", h.ssoConfig.ClientSecret)
+	data.Set("code", code)
+	data.Set("redirect_uri", redirectURI)
+
+	resp, err := http.PostForm(h.ssoConfig.GetTokenURL(), data)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, err
+	}
+
+	return &tokenResp, nil
+}
+
+// parseIDToken 解析 id_token 获取 email
+// 简化版：只解析 payload，不验证签名（企业内部信任 IdP）
+func (h *Handler) parseIDToken(idToken string) (string, error) {
+	// JWT 格式: header.payload.signature
+	parts := strings.Split(idToken, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid id_token format")
+	}
+
+	// Base64 解码 payload
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", err
+	}
+
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", err
+	}
+
+	emailClaim := h.ssoConfig.EmailClaim
+	if emailClaim == "" {
+		emailClaim = "email"
+	}
+
+	email, ok := claims[emailClaim].(string)
+	if !ok || email == "" {
+		return "", fmt.Errorf("email not found in id_token")
+	}
+
+	return email, nil
 }

@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
     department TEXT,
     quota_policy TEXT DEFAULT 'default',
     models TEXT, -- JSON 数组
+    auth_source TEXT DEFAULT 'local', -- 用户来源: local, sso
     enabled BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

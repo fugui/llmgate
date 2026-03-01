@@ -187,7 +187,16 @@ func main() {
 	api := r.Group("/api/v1")
 
 	// 注册各模块路由
-	userHandler := user.NewHandler(userStore, jwtManager, quotaService, quotaStore, localCache, cfg.Frontend.FeedbackURL, cfg.Frontend.DevManualURL)
+	userHandler := user.NewHandler(user.NewHandlerParams{
+		Store:        userStore,
+		JWTManager:   jwtManager,
+		QuotaService: quotaService,
+		QuotaStore:   quotaStore,
+		Cache:        localCache,
+		SSOConfig:    cfg.SSO,
+		FeedbackURL:  cfg.Frontend.FeedbackURL,
+		DevManualURL: cfg.Frontend.DevManualURL,
+	})
 	userHandler.RegisterRoutes(api)
 
 	apiKeyHandler := apikey.NewHandler(apiKeyService, userStore)

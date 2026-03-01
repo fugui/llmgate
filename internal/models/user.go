@@ -54,6 +54,7 @@ type User struct {
 	Department   string      `json:"department"`
 	QuotaPolicy  string      `json:"quota_policy"`
 	Models       StringArray `json:"models"`
+	AuthSource   string      `json:"auth_source"` // local, sso
 	Enabled      bool        `json:"enabled"`
 	CreatedAt    time.Time   `json:"created_at"`
 	UpdatedAt    time.Time   `json:"updated_at"`
@@ -87,6 +88,7 @@ type UserResponse struct {
 	Department   string      `json:"department"`
 	QuotaPolicy  string      `json:"quota_policy"`
 	Models       StringArray `json:"models"`
+	AuthSource   string      `json:"auth_source"`
 	Enabled      bool        `json:"enabled"`
 	CreatedAt    time.Time   `json:"created_at"`
 	LastLoginAt  *time.Time  `json:"last_login_at,omitempty"`
@@ -101,6 +103,7 @@ func (u *User) ToResponse() UserResponse {
 		Department:  u.Department,
 		QuotaPolicy: u.QuotaPolicy,
 		Models:      u.Models,
+		AuthSource:  u.AuthSource,
 		Enabled:     u.Enabled,
 		CreatedAt:   u.CreatedAt,
 		LastLoginAt: u.LastLoginAt,
@@ -118,15 +121,18 @@ func NewUserStore(db *sql.DB) *UserStore {
 
 func (s *UserStore) Create(user *User) error {
 	user.ID = uuid.New()
+	if user.AuthSource == "" {
+		user.AuthSource = "local"
+	}
 	query := `
-		INSERT INTO users (id, email, password_hash, name, role, department, quota_policy, models, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (id, email, password_hash, name, role, department, quota_policy, models, auth_source, enabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING created_at, updated_at`
 
 	modelsJSON, _ := json.Marshal(user.Models)
 	return s.db.QueryRow(query,
 		user.ID.String(), user.Email, user.PasswordHash, user.Name, user.Role, user.Department,
-		user.QuotaPolicy, string(modelsJSON), user.Enabled,
+		user.QuotaPolicy, string(modelsJSON), user.AuthSource, user.Enabled,
 	).Scan(&user.CreatedAt, &user.UpdatedAt)
 }
 
@@ -134,13 +140,13 @@ func (s *UserStore) GetByID(id uuid.UUID) (*User, error) {
 	user := &User{}
 	query := `
 		SELECT id, email, password_hash, name, role, department, quota_policy,
-		       models, enabled, created_at, updated_at, last_login_at
+		       models, auth_source, enabled, created_at, updated_at, last_login_at
 		FROM users WHERE id = ?`
 
 	var modelsJSON string
 	err := s.db.QueryRow(query, id.String()).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Role,
-		&user.Department, &user.QuotaPolicy, &modelsJSON, &user.Enabled,
+		&user.Department, &user.QuotaPolicy, &modelsJSON, &user.AuthSource, &user.Enabled,
 		&user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
 	)
 	if err == sql.ErrNoRows {
@@ -157,13 +163,13 @@ func (s *UserStore) GetByEmail(email string) (*User, error) {
 	user := &User{}
 	query := `
 		SELECT id, email, password_hash, name, role, department, quota_policy,
-		       models, enabled, created_at, updated_at, last_login_at
+		       models, auth_source, enabled, created_at, updated_at, last_login_at
 		FROM users WHERE email = ? AND enabled = 1`
 
 	var modelsJSON string
 	err := s.db.QueryRow(query, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Role,
-		&user.Department, &user.QuotaPolicy, &modelsJSON, &user.Enabled,
+		&user.Department, &user.QuotaPolicy, &modelsJSON, &user.AuthSource, &user.Enabled,
 		&user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
 	)
 	if err == sql.ErrNoRows {
@@ -179,7 +185,7 @@ func (s *UserStore) GetByEmail(email string) (*User, error) {
 func (s *UserStore) List(limit, offset int) ([]*User, error) {
 	query := `
 		SELECT id, email, password_hash, name, role, department, quota_policy,
-		       models, enabled, created_at, updated_at, last_login_at
+		       models, auth_source, enabled, created_at, updated_at, last_login_at
 		FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?`
 
 	rows, err := s.db.Query(query, limit, offset)
@@ -194,7 +200,7 @@ func (s *UserStore) List(limit, offset int) ([]*User, error) {
 		var modelsJSON string
 		err := rows.Scan(
 			&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Role,
-			&user.Department, &user.QuotaPolicy, &modelsJSON, &user.Enabled,
+			&user.Department, &user.QuotaPolicy, &modelsJSON, &user.AuthSource, &user.Enabled,
 			&user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
 		)
 		if err != nil {
@@ -210,13 +216,13 @@ func (s *UserStore) Update(user *User) error {
 	query := `
 		UPDATE users SET
 			email = ?, name = ?, role = ?, department = ?,
-			quota_policy = ?, models = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+			quota_policy = ?, models = ?, auth_source = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`
 
 	modelsJSON, _ := json.Marshal(user.Models)
 	_, err := s.db.Exec(query,
 		user.Email, user.Name, user.Role, user.Department,
-		user.QuotaPolicy, string(modelsJSON), user.Enabled, user.ID.String(),
+		user.QuotaPolicy, string(modelsJSON), user.AuthSource, user.Enabled, user.ID.String(),
 	)
 	return err
 }

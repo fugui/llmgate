@@ -17,6 +17,7 @@ type Config struct {
 	Logs        LogConfig         `yaml:"logs"`
 	Frontend    FrontendConfig    `yaml:"frontend"`
 	Concurrency ConcurrencyConfig `yaml:"concurrency"`
+	SSO         SSOConfig         `yaml:"sso"`
 }
 
 type ServerConfig struct {
@@ -77,6 +78,33 @@ type FrontendConfig struct {
 	DevManualURL string `yaml:"dev_manual_url"`
 }
 
+// SSOConfig 企业 SSO 配置
+type SSOConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	Provider     string `yaml:"provider"`
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	IssuerURL    string `yaml:"issuer_url"`
+	EmailClaim   string `yaml:"email_claim"`
+}
+
+// GetAuthorizeURL 获取授权端点
+func (s SSOConfig) GetAuthorizeURL() string {
+	if s.Provider == "azure" {
+		return s.IssuerURL + "/oauth2/v2.0/authorize"
+	}
+	// 通用 OIDC
+	return s.IssuerURL + "/authorize"
+}
+
+// GetTokenURL 获取 Token 端点
+func (s SSOConfig) GetTokenURL() string {
+	if s.Provider == "azure" {
+		return s.IssuerURL + "/oauth2/v2.0/token"
+	}
+	return s.IssuerURL + "/token"
+}
+
 type ConcurrencyConfig struct {
 	GlobalLimit int `yaml:"global_limit"` // 全局并发限制，0 表示不限制
 	UserLimit   int `yaml:"user_limit"`   // 每个用户并发限制，0 表示不限制
@@ -114,6 +142,11 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Logs.RetentionDays == 0 {
 		cfg.Logs.RetentionDays = 7
+	}
+
+	// SSO 默认值
+	if cfg.SSO.Enabled && cfg.SSO.EmailClaim == "" {
+		cfg.SSO.EmailClaim = "email"
 	}
 
 	return &cfg, nil
