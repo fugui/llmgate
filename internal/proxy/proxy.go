@@ -158,8 +158,8 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 		requestBody = modifyRequestModel(bodyBytes, backend.ModelName)
 	}
 
-	// 转发请求
-	url := backend.URL + "/v1/chat/completions"
+	// 转发请求 - 自动处理 base_url 末尾的斜杠
+	url := strings.TrimSuffix(backend.URL, "/") + "/v1/chat/completions"
 	proxyReq, err := http.NewRequest(c.Request.Method, url, bytes.NewReader(requestBody))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create proxy request"})
@@ -326,7 +326,7 @@ func (p *Proxy) handleStreamResponse(c *gin.Context, resp *http.Response, userID
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
 			data = strings.TrimSpace(data)
-			
+
 			if data == "[DONE]" {
 				// 流结束
 				c.Writer.WriteString(line)

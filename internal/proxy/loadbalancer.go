@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -173,7 +174,7 @@ func (lb *RoundRobinBalancer) CheckHealth(backendID string) bool {
 	defer cancel()
 
 	// 构造健康检查 URL（尝试 /health 端点，如果不存在则用 /v1/models）
-	healthURL := backendURL + "/health"
+	healthURL := strings.TrimSuffix(backendURL, "/") + "/health"
 
 	start := time.Now()
 	req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)

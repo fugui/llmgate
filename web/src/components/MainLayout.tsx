@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Button, Avatar, Dropdown } from 'antd';
+import { Layout, Menu, Avatar, Dropdown } from 'antd';
 import {
   MessageOutlined,
   DashboardOutlined,
@@ -9,9 +9,11 @@ import {
   LogoutOutlined,
   UserOutlined,
   DownOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import api from '../api';
+import logo from '../assets/model-gate.png';
 
 const { Header, Content } = Layout;
 
@@ -75,7 +77,7 @@ const MainLayout: React.FC = () => {
     {
       key: 'chat',
       icon: <MessageOutlined />,
-      label: 'AI 对话',
+      label: 'AI 操练场',
       onClick: () => navigate('/chat'),
     },
     {
@@ -93,6 +95,12 @@ const MainLayout: React.FC = () => {
   ];
 
   const bottomMenuItems = [
+    ...(user.role === 'admin' ? [{
+      key: 'admin',
+      icon: <SettingOutlined />,
+      label: '配置管理',
+      onClick: () => navigate('/admin'),
+    }] : []),
     ...(config?.feedback_url ? [{
       key: 'feedback',
       icon: <QuestionCircleOutlined />,
@@ -135,11 +143,8 @@ const MainLayout: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           borderBottom: '1px solid #f0f0f0',
-          fontSize: 18,
-          fontWeight: 'bold',
-          color: '#1890ff',
         }}>
-          LLMGATE
+          <img src={logo} alt="ModelGate" style={{ height: 55 }} />
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
@@ -177,16 +182,10 @@ const MainLayout: React.FC = () => {
           }}
         >
           <div style={{ fontSize: 16, fontWeight: 500 }}>
-            企业内部 LLM 平台
+            我的大模型门户， 让 AI 触手可及， 使能效率倍增新时代
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {user.role === 'admin' && (
-              <Button type="link" onClick={() => navigate('/admin')}>
-                管理后台
-              </Button>
-            )}
-
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Avatar icon={<UserOutlined />} size="small" />

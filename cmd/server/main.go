@@ -113,6 +113,7 @@ func main() {
 				Name:        m.Name,
 				Description: m.Description,
 				Enabled:     m.Enabled,
+				ModelParams: m.ModelParams,
 			}
 			if err := modelStore.Create(model); err != nil {
 				log.Printf("Failed to create model %s: %v", m.ID, err)
