@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Card, Table, Button, Tag, message, Modal, Form, Input, InputNumber, Space, Popconfirm, Tooltip, Switch } from 'antd';
+import { Card, Table, Button, Tag, message, Modal, Form, Input, InputNumber, Space, Popconfirm, Tooltip, Switch } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
-
-const { Header, Content } = Layout;
 
 interface Backend {
   id: string;
@@ -93,10 +91,7 @@ const BackendManage: React.FC = () => {
     setEditingBackend(null);
     setBackendModalTitle('创建后端');
     backendForm.resetFields();
-    backendForm.setFieldsValue({
-      weight: 1,
-      enabled: true,
-    });
+    backendForm.setFieldsValue({ weight: 1, enabled: true });
     setBackendModalVisible(true);
   };
 
@@ -108,7 +103,6 @@ const BackendManage: React.FC = () => {
       name: backend.name,
       base_url: backend.base_url,
       model_name: backend.model_name,
-      api_key: '', // Don't show API key for security
       weight: backend.weight,
       region: backend.region,
       enabled: backend.enabled,
@@ -116,38 +110,24 @@ const BackendManage: React.FC = () => {
     setBackendModalVisible(true);
   };
 
+  const handleDeleteBackend = async (backend: Backend) => {
+    try {
+      await api.delete(`/api/v1/admin/models/${modelId}/backends/${backend.id}`);
+      messageApi.success('删除成功');
+      fetchBackends();
+    } catch {
+      messageApi.error('删除失败');
+    }
+  };
+
   const handleBackendSubmit = async (values: BackendFormValues) => {
-    if (!modelId) return;
     try {
       if (editingBackend) {
-        // Update existing backend
-        const updateData: Record<string, string | number | boolean> = {
-          name: values.name,
-          base_url: values.base_url,
-          model_name: values.model_name,
-          weight: values.weight,
-          region: values.region,
-          enabled: values.enabled,
-        };
-        // Only include api_key if it's provided (not empty)
-        if (values.api_key && values.api_key.trim() !== '') {
-          updateData.api_key = values.api_key;
-        }
-        await api.put(`/api/v1/admin/models/${modelId}/backends/${editingBackend.id}`, updateData);
-        messageApi.success('后端更新成功');
+        await api.put(`/api/v1/admin/models/${modelId}/backends/${values.id}`, values);
+        messageApi.success('更新成功');
       } else {
-        // Create new backend
-        await api.post(`/api/v1/admin/models/${modelId}/backends`, {
-          id: values.id,
-          name: values.name,
-          base_url: values.base_url,
-          model_name: values.model_name,
-          api_key: values.api_key,
-          weight: values.weight,
-          region: values.region,
-          enabled: values.enabled,
-        });
-        messageApi.success('后端创建成功');
+        await api.post(`/api/v1/admin/models/${modelId}/backends`, values);
+        messageApi.success('创建成功');
       }
       setBackendModalVisible(false);
       fetchBackends();
@@ -157,26 +137,10 @@ const BackendManage: React.FC = () => {
     }
   };
 
-  const handleDeleteBackend = async (backend: Backend) => {
-    if (!modelId) return;
-    try {
-      await api.delete(`/api/v1/admin/models/${modelId}/backends/${backend.id}`);
-      messageApi.success('后端删除成功');
-      fetchBackends();
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      messageApi.error(error.response?.data?.error || '删除失败');
-    }
-  };
-
   const handleToggleBackendEnabled = async (backend: Backend) => {
-    if (!modelId) return;
     try {
       await api.put(`/api/v1/admin/models/${modelId}/backends/${backend.id}`, {
-        name: backend.name,
-        base_url: backend.base_url,
-        model_name: backend.model_name,
-        weight: backend.weight,
+        ...backend,
         region: backend.region,
         enabled: !backend.enabled,
       });
@@ -209,7 +173,7 @@ const BackendManage: React.FC = () => {
       render: (name: string) => name || '-',
     },
     {
-      title: 'Weight',
+      title: '权重',
       dataIndex: 'weight',
       key: 'weight',
       render: (weight: number) => <Tag color="blue">{weight}</Tag>,
@@ -282,58 +246,55 @@ const BackendManage: React.FC = () => {
   ];
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate('/admin')}
-            style={{ marginRight: 16 }}
-          >
-            返回
-          </Button>
-          <div>
-            <h2 style={{ color: '#fff', margin: 0 }}>后端管理</h2>
-            <div style={{ color: '#aaa', fontSize: 12, marginTop: 4 }}>
-              模型: {model?.name || modelId}
-            </div>
-          </div>
-        </div>
-      </Header>
-      <Content style={{ padding: 24 }}>
-        {contextHolder}
-        <Card>
-          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+    <div>
+      {contextHolder}
+      <Card
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate('/admin')}
+            >
+              返回
+            </Button>
             <div>
-              <h3 style={{ margin: 0 }}>后端实例列表</h3>
-              <p style={{ color: '#666', margin: '8px 0 0 0' }}>
-                管理模型 &quot;{model?.name || modelId}&quot; 的后端实例，支持负载均衡配置
-              </p>
+              <div style={{ fontSize: 16, fontWeight: 500 }}>后端管理</div>
+              <div style={{ color: '#666', fontSize: 12 }}>
+                模型: {model?.name || modelId}
+              </div>
             </div>
-            <Space>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={fetchBackends}
-              >
-                刷新
-              </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleCreateBackend}
-              >
-                创建后端
-              </Button>
-            </Space>
           </div>
-          <Table
-            dataSource={backends}
-            columns={backendColumns}
-            rowKey="id"
-            loading={loading}
-          />
-        </Card>
-      </Content>
+        }
+      >
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ color: '#666', margin: 0 }}>
+              管理模型 &quot;{model?.name || modelId}&quot; 的后端实例，支持负载均衡配置
+            </p>
+          </div>
+          <Space>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={fetchBackends}
+            >
+              刷新
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleCreateBackend}
+            >
+              创建后端
+            </Button>
+          </Space>
+        </div>
+        <Table
+          dataSource={backends}
+          columns={backendColumns}
+          rowKey="id"
+          loading={loading}
+        />
+      </Card>
 
       {/* Backend Create/Edit Modal */}
       <Modal
@@ -422,7 +383,7 @@ const BackendManage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </Layout>
+    </div>
   );
 };
 

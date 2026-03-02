@@ -70,6 +70,7 @@ const MainLayout: React.FC = () => {
     if (path === '/chat' || path === '/') return 'chat';
     if (path === '/stats') return 'stats';
     if (path === '/keys') return 'keys';
+    if (path === '/admin' || path.startsWith('/admin/')) return 'admin';
     return 'chat';
   };
 
@@ -92,15 +93,15 @@ const MainLayout: React.FC = () => {
       label: 'API Key 管理',
       onClick: () => navigate('/keys'),
     },
-  ];
-
-  const bottomMenuItems = [
     ...(user.role === 'admin' ? [{
       key: 'admin',
       icon: <SettingOutlined />,
       label: '配置管理',
       onClick: () => navigate('/admin'),
     }] : []),
+  ];
+
+  const bottomMenuItems = [
     ...(config?.feedback_url ? [{
       key: 'feedback',
       icon: <QuestionCircleOutlined />,

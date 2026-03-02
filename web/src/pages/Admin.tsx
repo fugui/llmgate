@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Card, Table, Button, Tag, message, Tabs, Modal, Form, Input, Space, Popconfirm, Statistic, Row, Col, Tooltip, Switch } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Tag, message, Tabs, Modal, Form, Input, Space, Popconfirm, Statistic, Row, Col, Tooltip, Switch } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
-
-const { Header, Content } = Layout;
 
 interface Model {
   id: string;
@@ -54,8 +52,15 @@ interface User {
 interface Policy {
   name: string;
   rate_limit: number;
-  token_quota_daily: number;
-  token_quota_monthly: number;
+  request_quota_daily: number;
+}
+
+interface ModelFormValues {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  model_params?: string;
 }
 
 const Admin: React.FC = () => {
@@ -177,13 +182,35 @@ const Admin: React.FC = () => {
     setModelModalVisible(true);
   };
 
-interface ModelFormValues {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  model_params?: string;
-}
+  const handleDeleteModel = async (model: Model) => {
+    try {
+      await api.delete(`/api/v1/admin/models/${model.id}`);
+      messageApi.success('模型删除成功');
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '删除失败');
+    }
+  };
+
+  const handleToggleModelEnabled = async (model: Model) => {
+    try {
+      await api.put(`/api/v1/admin/models/${model.id}`, {
+        name: model.name,
+        description: model.description,
+        enabled: !model.enabled,
+      });
+      messageApi.success(model.enabled ? '模型已禁用' : '模型已启用');
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
+  const handleManageBackends = (modelId: string) => {
+    navigate(`/admin/models/${modelId}/backends`);
+  };
 
   const handleModelSubmit = async (values: ModelFormValues) => {
     try {
@@ -224,36 +251,6 @@ interface ModelFormValues {
       const error = err as { response?: { data?: { error?: string } } };
       messageApi.error(error.response?.data?.error || '操作失败');
     }
-  };
-
-  const handleDeleteModel = async (model: Model) => {
-    try {
-      await api.delete(`/api/v1/admin/models/${model.id}`);
-      messageApi.success('模型删除成功');
-      fetchData();
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      messageApi.error(error.response?.data?.error || '删除失败');
-    }
-  };
-
-  const handleToggleModelEnabled = async (model: Model) => {
-    try {
-      await api.put(`/api/v1/admin/models/${model.id}`, {
-        name: model.name,
-        description: model.description,
-        enabled: !model.enabled,
-      });
-      messageApi.success(model.enabled ? '模型已禁用' : '模型已启用');
-      fetchData();
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      messageApi.error(error.response?.data?.error || '操作失败');
-    }
-  };
-
-  const handleManageBackends = (modelId: string) => {
-    navigate(`/admin/models/${modelId}/backends`);
   };
 
   const userColumns = [
@@ -338,8 +335,7 @@ interface ModelFormValues {
   const policyColumns = [
     { title: '名称', dataIndex: 'name' },
     { title: '速率限制', dataIndex: 'rate_limit', render: (v: number) => `${v}/min` },
-    { title: 'Token 日限额', dataIndex: 'token_quota_daily' },
-    { title: 'Token 月限额', dataIndex: 'token_quota_monthly' },
+    { title: '每日请求限额', dataIndex: 'request_quota_daily' },
   ];
 
   const healthColumns = [
@@ -419,109 +415,95 @@ interface ModelFormValues {
   const totalBackends = Object.keys(healthStatus).length;
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate('/dashboard')}
-            style={{ marginRight: 16 }}
-          >
-            返回
-          </Button>
-          <h2 style={{ color: '#fff', margin: 0 }}>管理后台</h2>
-        </div>
-      </Header>
-      <Content style={{ padding: 24 }}>
-        {contextHolder}
-        <Card>
-          <Tabs activeKey={activeTab} onChange={setActiveTab}>
-            <Tabs.TabPane tab="用户管理" key="users">
-              <Table
-                dataSource={users}
-                columns={userColumns}
-                rowKey="id"
-                loading={loading}
-              />
-            </Tabs.TabPane>
-            <Tabs.TabPane tab="模型管理" key="models">
-              <div style={{ marginBottom: 16 }}>
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={handleCreateModel}
-                >
-                  创建模型
-                </Button>
-              </div>
-              <Table
-                dataSource={models}
-                columns={modelColumns}
-                rowKey="id"
-                loading={loading}
-              />
-            </Tabs.TabPane>
-            <Tabs.TabPane tab="配额策略" key="policies">
-              <Table
-                dataSource={policies}
-                columns={policyColumns}
-                rowKey="name"
-                loading={loading}
-              />
-            </Tabs.TabPane>
-            <Tabs.TabPane tab="健康监控" key="health">
-              <Row gutter={16} style={{ marginBottom: 24 }}>
-                <Col span={8}>
-                  <Card>
-                    <Statistic
-                      title="总后端数"
-                      value={totalBackends}
-                      valueStyle={{ color: '#1890ff' }}
-                    />
-                  </Card>
-                </Col>
-                <Col span={8}>
-                  <Card>
-                    <Statistic
-                      title="健康后端"
-                      value={healthyCount}
-                      valueStyle={{ color: '#52c41a' }}
-                      prefix={<CheckCircleOutlined />}
-                    />
-                  </Card>
-                </Col>
-                <Col span={8}>
-                  <Card>
-                    <Statistic
-                      title="不健康后端"
-                      value={unhealthyCount}
-                      valueStyle={{ color: unhealthyCount > 0 ? '#cf1322' : '#999' }}
-                      prefix={<CloseCircleOutlined />}
-                    />
-                  </Card>
-                </Col>
-              </Row>
-              <div style={{ marginBottom: 16 }}>
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => {
-                    fetchHealthStatus();
-                    fetchAllBackends();
-                  }}
-                >
-                  刷新
-                </Button>
-              </div>
-              <Table
-                dataSource={backends}
-                columns={healthColumns}
-                rowKey="id"
-                loading={loading}
-              />
-            </Tabs.TabPane>
-          </Tabs>
-        </Card>
-      </Content>
+    <div>
+      {contextHolder}
+      <Card title="管理后台">
+        <Tabs activeKey={activeTab} onChange={setActiveTab}>
+          <Tabs.TabPane tab="用户管理" key="users">
+            <Table
+              dataSource={users}
+              columns={userColumns}
+              rowKey="id"
+              loading={loading}
+            />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="模型管理" key="models">
+            <div style={{ marginBottom: 16 }}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreateModel}
+              >
+                创建模型
+              </Button>
+            </div>
+            <Table
+              dataSource={models}
+              columns={modelColumns}
+              rowKey="id"
+              loading={loading}
+            />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="配额策略" key="policies">
+            <Table
+              dataSource={policies}
+              columns={policyColumns}
+              rowKey="name"
+              loading={loading}
+            />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="健康监控" key="health">
+            <Row gutter={16} style={{ marginBottom: 24 }}>
+              <Col span={8}>
+                <Card>
+                  <Statistic
+                    title="总后端数"
+                    value={totalBackends}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card>
+                  <Statistic
+                    title="健康后端"
+                    value={healthyCount}
+                    valueStyle={{ color: '#52c41a' }}
+                    prefix={<CheckCircleOutlined />}
+                  />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card>
+                  <Statistic
+                    title="不健康后端"
+                    value={unhealthyCount}
+                    valueStyle={{ color: unhealthyCount > 0 ? '#cf1322' : '#999' }}
+                    prefix={<CloseCircleOutlined />}
+                  />
+                </Card>
+              </Col>
+            </Row>
+            <div style={{ marginBottom: 16 }}>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => {
+                  fetchHealthStatus();
+                  fetchAllBackends();
+                }}
+              >
+                刷新
+              </Button>
+            </div>
+            <Table
+              dataSource={backends}
+              columns={healthColumns}
+              rowKey="id"
+              loading={loading}
+            />
+          </Tabs.TabPane>
+        </Tabs>
+      </Card>
 
       {/* Model Create/Edit Modal */}
       <Modal
@@ -587,7 +569,7 @@ interface ModelFormValues {
           </Form.Item>
         </Form>
       </Modal>
-    </Layout>
+    </div>
   );
 };
 
