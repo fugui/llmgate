@@ -97,7 +97,7 @@ const MainLayout: React.FC = () => {
       key: 'admin',
       icon: <SettingOutlined />,
       label: '配置管理',
-      onClick: () => navigate('/admin'),
+      onClick: () => navigate('/admin/users'),
     }] : []),
   ];
 

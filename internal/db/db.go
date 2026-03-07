@@ -137,5 +137,32 @@ CREATE INDEX IF NOT EXISTS idx_quota_usage_date ON quota_usage_daily(date);
 		return fmt.Errorf("failed to execute schema: %w", err)
 	}
 
+	// 迁移：添加 request_quota_daily 列（如果不存在）
+	if err := addColumnIfNotExists(db.DB, "quota_policies", "request_quota_daily", "INTEGER DEFAULT 1000"); err != nil {
+		return fmt.Errorf("failed to add request_quota_daily column: %w", err)
+	}
+
+	return nil
+}
+
+// addColumnIfNotExists 添加列（如果不存在）
+func addColumnIfNotExists(db *sql.DB, table, column, definition string) error {
+	// 检查列是否存在
+	var count int
+	query := `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`
+	err := db.QueryRow(query, table, column).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	// 列不存在则添加
+	if count == 0 {
+		alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition)
+		_, err := db.Exec(alterSQL)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

@@ -38,8 +38,9 @@ const App: React.FC = () => {
             <Route path="chat" element={<Chat />} />
             <Route path="stats" element={<UsageStats />} />
             <Route path="keys" element={<APIKeyManage />} />
-            <Route path="admin" element={<Admin />} />
+            <Route path="admin" element={<Navigate to="/admin/users" replace />} />
             <Route path="admin/models/:modelId/backends" element={<BackendManage />} />
+            <Route path="admin/:tab" element={<Admin />} />
           </Route>
           {/* 默认路由 - 捕获所有未匹配的路径 */}
           <Route path="*" element={<Navigate to="/" replace />} />

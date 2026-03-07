@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Button, Tag, message, Tabs, Modal, Form, Input, Space, Popconfirm, Statistic, Row, Col, Tooltip, Switch } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { Card, Table, Button, Tag, message, Tabs, Modal, Form, Input, Space, Popconfirm, Statistic, Row, Col, Tooltip, Switch, Drawer, InputNumber } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 
 interface Model {
@@ -63,15 +63,40 @@ interface ModelFormValues {
   model_params?: string;
 }
 
+interface BackendFormValues {
+  id: string;
+  name: string;
+  base_url: string;
+  model_name: string;
+  api_key: string;
+  weight: number;
+  region: string;
+  enabled: boolean;
+}
+
 const Admin: React.FC = () => {
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+
   const [users, setUsers] = useState<User[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [backends, setBackends] = useState<Backend[]>([]);
   const [healthStatus, setHealthStatus] = useState<Record<string, BackendHealth>>({});
-  const [activeTab, setActiveTab] = useState('users');
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+
+  // Backend drawer states
+  const [backendDrawerVisible, setBackendDrawerVisible] = useState(false);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedModelName, setSelectedModelName] = useState<string>('');
+  const [modelBackends, setModelBackends] = useState<Backend[]>([]);
+  const [backendsLoading, setBackendsLoading] = useState(false);
+
+  // Backend modal states
+  const [backendModalVisible, setBackendModalVisible] = useState(false);
+  const [backendModalTitle, setBackendModalTitle] = useState('创建后端');
+  const [editingBackend, setEditingBackend] = useState<Backend | null>(null);
+  const [backendForm] = Form.useForm();
 
   // Modal states
   const [modelModalVisible, setModelModalVisible] = useState(false);
@@ -144,12 +169,22 @@ const Admin: React.FC = () => {
     }
   };
 
+  // Validate and set active tab from URL
+  useEffect(() => {
+    const validTabs = ['users', 'models', 'policies', 'health'];
+    const currentTab = tab || 'users';
+    if (!validTabs.includes(currentTab)) {
+      navigate('/admin/users', { replace: true });
+    }
+  }, [tab, navigate]);
+
   useEffect(() => {
     fetchData();
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'health') {
+    const currentTab = tab || 'users';
+    if (currentTab === 'health') {
       fetchHealthStatus();
       fetchAllBackends();
       // Auto refresh every 30 seconds
@@ -158,7 +193,7 @@ const Admin: React.FC = () => {
       }, 30000);
       return () => clearInterval(interval);
     }
-  }, [activeTab, models]);
+  }, [tab, models]);
 
   // Model management functions
   const handleCreateModel = () => {
@@ -208,8 +243,30 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleManageBackends = (modelId: string) => {
-    navigate(`/admin/models/${modelId}/backends`);
+  const handleManageBackends = async (modelId: string, modelName: string) => {
+    setSelectedModelId(modelId);
+    setSelectedModelName(modelName);
+    setBackendDrawerVisible(true);
+    await fetchModelBackends(modelId);
+  };
+
+  const fetchModelBackends = async (modelId: string) => {
+    setBackendsLoading(true);
+    try {
+      const res = await api.get(`/api/v1/admin/models/${modelId}/backends`);
+      setModelBackends(res.data.data || []);
+    } catch {
+      messageApi.error('获取后端列表失败');
+    } finally {
+      setBackendsLoading(false);
+    }
+  };
+
+  const handleCloseBackendDrawer = () => {
+    setBackendDrawerVisible(false);
+    setSelectedModelId(null);
+    setSelectedModelName('');
+    setModelBackends([]);
   };
 
   const handleModelSubmit = async (values: ModelFormValues) => {
@@ -247,6 +304,78 @@ const Admin: React.FC = () => {
       }
       setModelModalVisible(false);
       fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
+  // Backend management functions
+  const handleCreateBackend = () => {
+    setEditingBackend(null);
+    setBackendModalTitle('创建后端');
+    backendForm.resetFields();
+    backendForm.setFieldsValue({ weight: 1, enabled: true });
+    setBackendModalVisible(true);
+  };
+
+  const handleEditBackend = (backend: Backend) => {
+    setEditingBackend(backend);
+    setBackendModalTitle('编辑后端');
+    backendForm.setFieldsValue({
+      id: backend.id,
+      name: backend.name,
+      base_url: backend.base_url,
+      model_name: backend.model_name,
+      weight: backend.weight,
+      region: backend.region,
+      enabled: backend.enabled,
+    });
+    setBackendModalVisible(true);
+  };
+
+  const handleDeleteBackend = async (backend: Backend) => {
+    if (!selectedModelId) return;
+    try {
+      await api.delete(`/api/v1/admin/models/${selectedModelId}/backends/${backend.id}`);
+      messageApi.success('删除成功');
+      fetchModelBackends(selectedModelId);
+      fetchData(); // Refresh model list to update backend count
+    } catch {
+      messageApi.error('删除失败');
+    }
+  };
+
+  const handleBackendSubmit = async (values: BackendFormValues) => {
+    if (!selectedModelId) return;
+    try {
+      if (editingBackend) {
+        await api.put(`/api/v1/admin/models/${selectedModelId}/backends/${values.id}`, values);
+        messageApi.success('更新成功');
+      } else {
+        await api.post(`/api/v1/admin/models/${selectedModelId}/backends`, values);
+        messageApi.success('创建成功');
+      }
+      setBackendModalVisible(false);
+      fetchModelBackends(selectedModelId);
+      fetchData(); // Refresh model list to update backend count
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
+  const handleToggleBackendEnabled = async (backend: Backend) => {
+    if (!selectedModelId) return;
+    try {
+      await api.put(`/api/v1/admin/models/${selectedModelId}/backends/${backend.id}`, {
+        ...backend,
+        region: backend.region,
+        enabled: !backend.enabled,
+      });
+      messageApi.success(backend.enabled ? '后端已禁用' : '后端已启用');
+      fetchModelBackends(selectedModelId);
+      fetchData(); // Refresh model list to update backend count
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
       messageApi.error(error.response?.data?.error || '操作失败');
@@ -312,7 +441,7 @@ const Admin: React.FC = () => {
               type="link"
               size="small"
               icon={<SettingOutlined />}
-              onClick={() => handleManageBackends(record.id)}
+              onClick={() => handleManageBackends(record.id, record.name)}
             />
           </Tooltip>
           <Popconfirm
@@ -336,6 +465,99 @@ const Admin: React.FC = () => {
     { title: '名称', dataIndex: 'name' },
     { title: '速率限制', dataIndex: 'rate_limit', render: (v: number) => `${v}/min` },
     { title: '每日请求限额', dataIndex: 'request_quota_daily' },
+  ];
+
+  const backendColumns = [
+    { title: 'ID', dataIndex: 'id', key: 'id', ellipsis: true },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string) => name || '-',
+    },
+    {
+      title: 'BaseURL',
+      dataIndex: 'base_url',
+      key: 'base_url',
+      ellipsis: true,
+    },
+    {
+      title: 'ModelName',
+      dataIndex: 'model_name',
+      key: 'model_name',
+      render: (name: string) => name || '-',
+    },
+    {
+      title: '权重',
+      dataIndex: 'weight',
+      key: 'weight',
+      render: (weight: number) => <Tag color="blue">{weight}</Tag>,
+    },
+    {
+      title: 'Region',
+      dataIndex: 'region',
+      key: 'region',
+      render: (region: string) => region || '-',
+    },
+    {
+      title: '健康状态',
+      dataIndex: 'healthy',
+      key: 'healthy',
+      render: (healthy: boolean, record: Backend) => {
+        if (!record.enabled) return <Tag>已禁用</Tag>;
+        return healthy ? (
+          <Tag color="green" icon={<CheckCircleOutlined />}>健康</Tag>
+        ) : (
+          <Tag color="red" icon={<CloseCircleOutlined />}>不健康</Tag>
+        );
+      },
+    },
+    {
+      title: '启用状态',
+      dataIndex: 'enabled',
+      key: 'enabled',
+      render: (enabled: boolean, record: Backend) => (
+        <Switch
+          checked={enabled}
+          onChange={() => handleToggleBackendEnabled(record)}
+          size="small"
+        />
+      ),
+    },
+    {
+      title: '最后检查',
+      dataIndex: 'last_check_at',
+      key: 'last_check_at',
+      render: (time: string) => time ? new Date(time).toLocaleString() : '-',
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_: unknown, record: Backend) => (
+        <Space>
+          <Tooltip title="编辑">
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEditBackend(record)}
+            />
+          </Tooltip>
+          <Popconfirm
+            title="确认删除"
+            description={`删除后端 "${record.name || record.id}"，确定要继续吗？`}
+            onConfirm={() => handleDeleteBackend(record)}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Tooltip title="删除">
+              <Button type="link" danger size="small" icon={<DeleteOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
+      ),
+    },
   ];
 
   const healthColumns = [
@@ -414,11 +636,17 @@ const Admin: React.FC = () => {
   const unhealthyCount = Object.values(healthStatus).filter(h => !h.healthy).length;
   const totalBackends = Object.keys(healthStatus).length;
 
+  const activeTabKey = tab || 'users';
+
+  const handleTabChange = (key: string) => {
+    navigate(`/admin/${key}`);
+  };
+
   return (
     <div>
       {contextHolder}
       <Card title="管理后台">
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
+        <Tabs activeKey={activeTabKey} onChange={handleTabChange}>
           <Tabs.TabPane tab="用户管理" key="users">
             <Table
               dataSource={users}
@@ -504,6 +732,149 @@ const Admin: React.FC = () => {
           </Tabs.TabPane>
         </Tabs>
       </Card>
+
+      {/* Backend Management Drawer */}
+      <Drawer
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={handleCloseBackendDrawer}
+            >
+              返回
+            </Button>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 500 }}>后端管理</div>
+              <div style={{ color: '#666', fontSize: 12 }}>
+                模型: {selectedModelName || selectedModelId}
+              </div>
+            </div>
+          </div>
+        }
+        placement="right"
+        width={1000}
+        onClose={handleCloseBackendDrawer}
+        open={backendDrawerVisible}
+        bodyStyle={{ padding: 24 }}
+      >
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ color: '#666', margin: 0 }}>
+              管理模型 "{selectedModelName || selectedModelId}" 的后端实例，支持负载均衡配置
+            </p>
+          </div>
+          <Space>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => selectedModelId && fetchModelBackends(selectedModelId)}
+            >
+              刷新
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleCreateBackend}
+            >
+              创建后端
+            </Button>
+          </Space>
+        </div>
+        <Table
+          dataSource={modelBackends}
+          columns={backendColumns}
+          rowKey="id"
+          loading={backendsLoading}
+        />
+      </Drawer>
+
+      {/* Backend Create/Edit Modal */}
+      <Modal
+        title={backendModalTitle}
+        open={backendModalVisible}
+        onCancel={() => setBackendModalVisible(false)}
+        onOk={() => backendForm.submit()}
+        okText={editingBackend ? '保存' : '创建'}
+        width={600}
+        destroyOnClose
+      >
+        <Form
+          form={backendForm}
+          onFinish={handleBackendSubmit}
+          layout="horizontal"
+          labelCol={{ span: 6 }}
+          wrapperCol={{ span: 18 }}
+          style={{ marginTop: 24 }}
+        >
+          <Form.Item
+            name="id"
+            label="后端ID"
+            rules={[{ required: true, message: '请输入后端ID' }]}
+            extra="唯一标识，如：backend-1, aws-us-east-1"
+          >
+            <Input disabled={!!editingBackend} placeholder="如：backend-1" />
+          </Form.Item>
+
+          <Form.Item
+            name="name"
+            label="名称"
+          >
+            <Input placeholder="显示名称（可选）" />
+          </Form.Item>
+
+          <Form.Item
+            name="base_url"
+            label="BaseURL"
+            rules={[
+              { required: true, message: '请输入BaseURL' },
+              { type: 'url', message: '请输入有效的URL' },
+            ]}
+            extra="后端服务地址，如：http://localhost:8080"
+          >
+            <Input placeholder="如：http://localhost:8080" />
+          </Form.Item>
+
+          <Form.Item
+            name="model_name"
+            label="ModelName"
+            extra="后端实际的模型名称（可选），不填则使用模型ID"
+          >
+            <Input placeholder="如：gpt-4-turbo" />
+          </Form.Item>
+
+          <Form.Item
+            name="api_key"
+            label="API Key"
+            extra={editingBackend ? "留空表示不修改（安全考虑，不显示当前值）" : "后端服务的API密钥（可选）"}
+          >
+            <Input.Password placeholder="API Key（可选）" />
+          </Form.Item>
+
+          <Form.Item
+            name="weight"
+            label="权重"
+            rules={[{ required: true, message: '请输入权重' }]}
+            extra="负载均衡权重，数值越大分配越多请求（默认1）"
+          >
+            <InputNumber min={1} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="region"
+            label="Region"
+            extra="地区标识（可选），如：cn-north-1, us-west-2"
+          >
+            <Input placeholder="如：cn-north-1" />
+          </Form.Item>
+
+          <Form.Item
+            name="enabled"
+            label="启用状态"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* Model Create/Edit Modal */}
       <Modal
