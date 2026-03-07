@@ -41,7 +41,7 @@ const Login: React.FC = () => {
       alignItems: 'center',
       background: '#f0f2f5'
     }}>
-      <Card title="LLMGATE 登录" style={{ width: 400 }}>
+      <Card title="模界（Model Gate）登录" style={{ width: 400 }}>
         {contextHolder}
         <Form onFinish={onFinish}>
           <Form.Item 
@@ -63,7 +63,7 @@ const Login: React.FC = () => {
           </Form.Item>
         </Form>
         <p style={{ textAlign: 'center', color: '#999' }}>
-          默认管理员: admin@llmgate.local / admin123
+          默认管理员: admin@modelgate.local / admin123
         </p>
       </Card>
     </div>
