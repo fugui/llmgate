@@ -877,6 +877,11 @@ const Admin: React.FC = () => {
       title: '健康状态',
       key: 'health',
       render: (_: unknown, record: Backend) => {
+        // 如果 Backend 被禁用，显示已禁用状态
+        if (record.enabled === false) {
+          return <Tag color="default">已禁用</Tag>;
+        }
+
         const health = healthStatus[record.id];
         if (!health) {
           return <Tag color="orange">检查中</Tag>;
