@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Button, Tag, message, Tabs, Modal, Form, Input, Space, Popconfirm, Statistic, Row, Col, Tooltip, Switch, Drawer, InputNumber } from 'antd';
+import { Card, Table, Button, Tag, message, Tabs, Modal, Form, Input, Space, Popconfirm, Statistic, Row, Col, Tooltip, Switch, Drawer, InputNumber, Select } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
@@ -46,12 +46,18 @@ interface User {
   name: string;
   role: string;
   department: string;
+  quota_policy: string;
+  enabled: boolean;
+  last_login_at?: string;
 }
 
 interface Policy {
   name: string;
   rate_limit: number;
+  rate_limit_window: number;
   request_quota_daily: number;
+  models: string[];
+  description: string;
 }
 
 interface ModelFormValues {
@@ -72,6 +78,27 @@ interface BackendFormValues {
   region: string;
   enabled: boolean;
 }
+
+interface UserFormValues {
+  id: string;
+  email: string;
+  password?: string;
+  name: string;
+  role: string;
+  department: string;
+  quota_policy: string;
+  enabled: boolean;
+}
+
+interface PolicyFormValues {
+  name: string;
+  description: string;
+  rate_limit: number;
+  rate_limit_window: number;
+  request_quota_daily: number;
+  models: string[];
+}
+
 
 const Admin: React.FC = () => {
   const { tab } = useParams<{ tab?: string }>();
@@ -103,7 +130,31 @@ const Admin: React.FC = () => {
   const [editingModel, setEditingModel] = useState<Model | null>(null);
   const [modelForm] = Form.useForm();
 
+  // User modal states
+  const [userModalVisible, setUserModalVisible] = useState(false);
+  const [userModalTitle, setUserModalTitle] = useState('创建用户');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userForm] = Form.useForm();
+
+  // Policy modal states
+  const [policyModalVisible, setPolicyModalVisible] = useState(false);
+  const [policyModalTitle, setPolicyModalTitle] = useState('创建策略');
+  const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
+  const [policyForm] = Form.useForm();
+
+  // System config states
+  const [configForm] = Form.useForm();
+
   const [messageApi, contextHolder] = message.useMessage();
+
+  const fetchSystemConfig = async () => {
+    try {
+      const res = await api.get('/api/v1/config/frontend');
+      configForm.setFieldsValue(res.data.data);
+    } catch {
+      messageApi.error('获取系统配置失败');
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -170,7 +221,7 @@ const Admin: React.FC = () => {
 
   // Validate and set active tab from URL
   useEffect(() => {
-    const validTabs = ['users', 'models', 'policies', 'health'];
+    const validTabs = ['users', 'models', 'policies', 'health', 'system'];
     const currentTab = tab || 'users';
     if (!validTabs.includes(currentTab)) {
       navigate('/admin/users', { replace: true });
@@ -191,6 +242,8 @@ const Admin: React.FC = () => {
         fetchHealthStatus();
       }, 30000);
       return () => clearInterval(interval);
+    } else if (currentTab === 'system') {
+      fetchSystemConfig();
     }
   }, [tab, models]);
 
@@ -381,17 +434,211 @@ const Admin: React.FC = () => {
     }
   };
 
+  // User management functions
+  const handleCreateUser = () => {
+    setEditingUser(null);
+    setUserModalTitle('创建用户');
+    userForm.resetFields();
+    userForm.setFieldsValue({ enabled: true, role: 'user', quota_policy: 'default' });
+    setUserModalVisible(true);
+  };
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user);
+    setUserModalTitle('编辑用户');
+    userForm.setFieldsValue({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      department: user.department,
+      quota_policy: user.quota_policy,
+      enabled: user.enabled,
+    });
+    setUserModalVisible(true);
+  };
+
+  const handleDeleteUser = async (user: User) => {
+    try {
+      await api.delete(`/api/v1/admin/users/${user.id}`);
+      messageApi.success('用户删除成功');
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '删除失败');
+    }
+  };
+
+  const handleToggleUserEnabled = async (user: User) => {
+    try {
+      await api.put(`/api/v1/admin/users/${user.id}`, {
+        ...user,
+        enabled: !user.enabled,
+      });
+      messageApi.success(user.enabled ? '用户已禁用' : '用户已启用');
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
+  const handleUserSubmit = async (values: UserFormValues) => {
+    try {
+      if (editingUser) {
+        // Update existing user
+        await api.put(`/api/v1/admin/users/${editingUser.id}`, {
+          name: values.name,
+          role: values.role,
+          department: values.department,
+          quota_policy: values.quota_policy,
+          enabled: values.enabled,
+        });
+        messageApi.success('用户更新成功');
+      } else {
+        // Create new user
+        await api.post('/api/v1/admin/users', {
+          id: values.id,
+          email: values.email,
+          password: values.password,
+          name: values.name,
+          role: values.role,
+          department: values.department,
+          quota_policy: values.quota_policy,
+          enabled: values.enabled,
+        });
+        messageApi.success('用户创建成功');
+      }
+      setUserModalVisible(false);
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
+  // Policy management functions
+  const handleCreatePolicy = () => {
+    setEditingPolicy(null);
+    setPolicyModalTitle('创建策略');
+    policyForm.resetFields();
+    policyForm.setFieldsValue({
+      enabled: true,
+      rate_limit: 60,
+      rate_limit_window: 60,
+      request_quota_daily: 1000
+    });
+    setPolicyModalVisible(true);
+  };
+
+  const handleEditPolicy = (policy: Policy) => {
+    setEditingPolicy(policy);
+    setPolicyModalTitle('编辑策略');
+    policyForm.setFieldsValue({
+      name: policy.name,
+      description: policy.description,
+      rate_limit: policy.rate_limit,
+      rate_limit_window: policy.rate_limit_window,
+      request_quota_daily: policy.request_quota_daily,
+      models: policy.models || [],
+    });
+    setPolicyModalVisible(true);
+  };
+
+  const handleDeletePolicy = async (policy: Policy) => {
+    try {
+      await api.delete(`/api/v1/admin/policies/${policy.name}`);
+      messageApi.success('策略删除成功');
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '删除失败');
+    }
+  };
+
+  const handlePolicySubmit = async (values: PolicyFormValues) => {
+    try {
+      if (editingPolicy) {
+        // Update existing policy
+        await api.put(`/api/v1/admin/policies/${editingPolicy.name}`, {
+          description: values.description,
+          rate_limit: values.rate_limit,
+          rate_limit_window: values.rate_limit_window,
+          request_quota_daily: values.request_quota_daily,
+          models: values.models,
+        });
+        messageApi.success('策略更新成功');
+      } else {
+        // Create new policy
+        await api.post('/api/v1/admin/policies', {
+          name: values.name,
+          description: values.description,
+          rate_limit: values.rate_limit,
+          rate_limit_window: values.rate_limit_window,
+          request_quota_daily: values.request_quota_daily,
+          models: values.models,
+        });
+        messageApi.success('策略创建成功');
+      }
+      setPolicyModalVisible(false);
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      messageApi.error(error.response?.data?.error || '操作失败');
+    }
+  };
+
   const userColumns = [
     { title: '邮箱', dataIndex: 'email' },
     { title: '姓名', dataIndex: 'name' },
     { title: '角色', dataIndex: 'role' },
     { title: '部门', dataIndex: 'department' },
     {
+      title: '配额策略',
+      dataIndex: 'quota_policy',
+      render: (policy: string) => policy ? <Tag color="blue">{policy}</Tag> : '-',
+    },
+    {
+      title: '启用状态',
+      dataIndex: 'enabled',
+      render: (enabled: boolean, record: User) => (
+        <Switch
+          checked={enabled}
+          onChange={() => handleToggleUserEnabled(record)}
+          size="small"
+        />
+      ),
+    },
+    {
+      title: '最后登录',
+      dataIndex: 'last_login_at',
+      render: (time: string) => time ? new Date(time).toLocaleString() : '-',
+    },
+    {
       title: '操作',
-      render: () => (
-        <Button size="small" icon={<EditOutlined />}>
-          编辑
-        </Button>
+      render: (_: unknown, record: User) => (
+        <Space>
+          <Tooltip title="编辑">
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEditUser(record)}
+            />
+          </Tooltip>
+          <Popconfirm
+            title="确认删除"
+            description={`删除用户 "${record.name || record.email}"，确定要继续吗？`}
+            onConfirm={() => handleDeleteUser(record)}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Tooltip title="删除">
+              <Button type="link" danger size="small" icon={<DeleteOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -457,8 +704,52 @@ const Admin: React.FC = () => {
 
   const policyColumns = [
     { title: '名称', dataIndex: 'name' },
-    { title: '速率限制', dataIndex: 'rate_limit', render: (v: number) => `${v}/min` },
-    { title: '每日请求限额', dataIndex: 'request_quota_daily' },
+    { title: '描述', dataIndex: 'description', ellipsis: true },
+    {
+      title: '速率限制',
+      dataIndex: 'rate_limit',
+      render: (v: number, record: Policy) => `${v}/${record.rate_limit_window || 60}s`,
+    },
+    {
+      title: '每日限额',
+      dataIndex: 'request_quota_daily',
+      render: (v: number) => v === 0 ? <Tag>无限制</Tag> : v,
+    },
+    {
+      title: '关联模型',
+      dataIndex: 'models',
+      render: (models: string[]) =>
+        models?.length > 0
+          ? <Space size="small">{models.map(m => <Tag key={m}>{m}</Tag>)}</Space>
+          : '-',
+    },
+    {
+      title: '操作',
+      render: (_: unknown, record: Policy) => (
+        <Space>
+          <Tooltip title="编辑">
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEditPolicy(record)}
+            />
+          </Tooltip>
+          <Popconfirm
+            title="确认删除"
+            description={`删除策略 "${record.name}"，确定要继续吗？`}
+            onConfirm={() => handleDeletePolicy(record)}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Tooltip title="删除">
+              <Button type="link" danger size="small" icon={<DeleteOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
+      ),
+    },
   ];
 
   const backendColumns = [
@@ -642,6 +933,15 @@ const Admin: React.FC = () => {
       <Card title="管理后台">
         <Tabs activeKey={activeTabKey} onChange={handleTabChange}>
           <Tabs.TabPane tab="用户管理" key="users">
+            <div style={{ marginBottom: 16 }}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreateUser}
+              >
+                创建用户
+              </Button>
+            </div>
             <Table
               dataSource={users}
               columns={userColumns}
@@ -667,6 +967,15 @@ const Admin: React.FC = () => {
             />
           </Tabs.TabPane>
           <Tabs.TabPane tab="配额策略" key="policies">
+            <div style={{ marginBottom: 16 }}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreatePolicy}
+              >
+                创建策略
+              </Button>
+            </div>
             <Table
               dataSource={policies}
               columns={policyColumns}
@@ -723,6 +1032,89 @@ const Admin: React.FC = () => {
               rowKey="id"
               loading={loading}
             />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="系统配置" key="system">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Card title="前端配置" style={{ marginBottom: 16 }}>
+                  <Form
+                    form={configForm}
+                    layout="horizontal"
+                    labelCol={{ span: 6 }}
+                    wrapperCol={{ span: 18 }}
+                  >
+                    <Form.Item
+                      name="feedback_url"
+                      label="反馈链接"
+                      rules={[{ type: 'url', message: '请输入有效的URL' }]}
+                    >
+                      <Input placeholder="如：https://example.com/feedback" />
+                    </Form.Item>
+                    <Form.Item
+                      name="dev_manual_url"
+                      label="开发手册链接"
+                      rules={[{ type: 'url', message: '请输入有效的URL' }]}
+                    >
+                      <Input placeholder="如：https://example.com/docs" />
+                    </Form.Item>
+                    <Form.Item
+                      name="sso_enabled"
+                      label="SSO 启用"
+                      valuePropName="checked"
+                    >
+                      <Switch disabled />
+                    </Form.Item>
+                    <Form.Item wrapperCol={{ offset: 6, span: 18 }}>
+                      <Space>
+                        <Button type="primary" onClick={() => configForm.submit()}>
+                          保存
+                        </Button>
+                        <Button
+                          icon={<ReloadOutlined />}
+                          onClick={fetchSystemConfig}
+                        >
+                          刷新
+                        </Button>
+                      </Space>
+                    </Form.Item>
+                  </Form>
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card title="系统统计">
+                  <Row gutter={[16, 16]}>
+                    <Col span={12}>
+                      <Statistic
+                        title="总用户数"
+                        value={users.length}
+                        valueStyle={{ color: '#1890ff' }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <Statistic
+                        title="总模型数"
+                        value={models.length}
+                        valueStyle={{ color: '#52c41a' }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <Statistic
+                        title="总策略数"
+                        value={policies.length}
+                        valueStyle={{ color: '#722ed1' }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <Statistic
+                        title="总后端数"
+                        value={backends.length}
+                        valueStyle={{ color: '#fa8c16' }}
+                      />
+                    </Col>
+                  </Row>
+                </Card>
+              </Col>
+            </Row>
           </Tabs.TabPane>
         </Tabs>
       </Card>
@@ -931,6 +1323,182 @@ const Admin: React.FC = () => {
   "enable_thinking": false,
   "max_tokens": 4096
 }`}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* User Create/Edit Modal */}
+      <Modal
+        title={userModalTitle}
+        open={userModalVisible}
+        onCancel={() => setUserModalVisible(false)}
+        onOk={() => userForm.submit()}
+        okText={editingUser ? '保存' : '创建'}
+        width={600}
+        destroyOnClose
+      >
+        <Form
+          form={userForm}
+          onFinish={handleUserSubmit}
+          layout="horizontal"
+          labelCol={{ span: 6 }}
+          wrapperCol={{ span: 18 }}
+          style={{ marginTop: 24 }}
+        >
+          <Form.Item
+            name="id"
+            label="用户ID"
+            rules={[{ required: !editingUser, message: '请输入用户ID' }]}
+            extra="唯一标识，如：zhangsan, lisi"
+            hidden={!!editingUser}
+          >
+            <Input disabled={!!editingUser} placeholder="如：zhangsan" />
+          </Form.Item>
+
+          <Form.Item
+            name="email"
+            label="邮箱"
+            rules={[
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '请输入有效的邮箱地址' },
+            ]}
+          >
+            <Input disabled={!!editingUser} placeholder="如：user@example.com" />
+          </Form.Item>
+
+          {!editingUser && (
+            <Form.Item
+              name="password"
+              label="密码"
+              rules={[{ required: !editingUser, message: '请输入密码' }]}
+              extra="初始密码，创建后建议用户修改"
+            >
+              <Input.Password placeholder="请输入初始密码" />
+            </Form.Item>
+          )}
+
+          <Form.Item
+            name="name"
+            label="姓名"
+            rules={[{ required: true, message: '请输入姓名' }]}
+          >
+            <Input placeholder="如：张三" />
+          </Form.Item>
+
+          <Form.Item
+            name="role"
+            label="角色"
+            rules={[{ required: true, message: '请选择角色' }]}
+          >
+            <Select placeholder="请选择角色">
+              <Select.Option value="admin">管理员</Select.Option>
+              <Select.Option value="manager">经理</Select.Option>
+              <Select.Option value="user">普通用户</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="department"
+            label="部门"
+          >
+            <Input placeholder="如：技术部（可选）" />
+          </Form.Item>
+
+          <Form.Item
+            name="quota_policy"
+            label="配额策略"
+            rules={[{ required: true, message: '请选择配额策略' }]}
+          >
+            <Select placeholder="请选择配额策略">
+              {policies.map(policy => (
+                <Select.Option key={policy.name} value={policy.name}>{policy.name}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="enabled"
+            label="启用状态"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Policy Create/Edit Modal */}
+      <Modal
+        title={policyModalTitle}
+        open={policyModalVisible}
+        onCancel={() => setPolicyModalVisible(false)}
+        onOk={() => policyForm.submit()}
+        okText={editingPolicy ? '保存' : '创建'}
+        width={600}
+        destroyOnClose
+      >
+        <Form
+          form={policyForm}
+          onFinish={handlePolicySubmit}
+          layout="horizontal"
+          labelCol={{ span: 6 }}
+          wrapperCol={{ span: 18 }}
+          style={{ marginTop: 24 }}
+        >
+          <Form.Item
+            name="name"
+            label="策略名称"
+            rules={[{ required: !editingPolicy, message: '请输入策略名称' }]}
+            extra="唯一标识，如：default, premium"
+            hidden={!!editingPolicy}
+          >
+            <Input disabled={!!editingPolicy} placeholder="如：premium" />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="描述"
+          >
+            <Input.TextArea rows={2} placeholder="策略描述信息（可选）" />
+          </Form.Item>
+
+          <Form.Item
+            name="rate_limit"
+            label="速率限制"
+            rules={[{ required: true, message: '请输入速率限制' }]}
+            extra="单位时间内允许的请求次数"
+          >
+            <InputNumber min={1} max={10000} style={{ width: '100%' }} placeholder="如：60" />
+          </Form.Item>
+
+          <Form.Item
+            name="rate_limit_window"
+            label="时间窗口"
+            rules={[{ required: true, message: '请输入时间窗口' }]}
+            extra="速率限制的时间窗口（秒）"
+          >
+            <InputNumber min={1} max={3600} style={{ width: '100%' }} placeholder="如：60" />
+          </Form.Item>
+
+          <Form.Item
+            name="request_quota_daily"
+            label="每日限额"
+            rules={[{ required: true, message: '请输入每日限额' }]}
+            extra="每天允许的请求次数（0表示无限制）"
+          >
+            <InputNumber min={0} max={1000000} style={{ width: '100%' }} placeholder="如：1000" />
+          </Form.Item>
+
+          <Form.Item
+            name="models"
+            label="关联模型"
+            extra="选择该策略允许的模型（多选）"
+          >
+            <Select
+              mode="multiple"
+              placeholder="请选择关联模型"
+              style={{ width: '100%' }}
+              options={models.map(model => ({ label: model.name, value: model.id }))}
             />
           </Form.Item>
         </Form>

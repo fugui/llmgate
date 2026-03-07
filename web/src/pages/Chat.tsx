@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Input, Button, Select, message, Space, Tag, Spin } from 'antd';
 import { SendOutlined, ClearOutlined, StopOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import api from '../api';
 
 const { TextArea } = Input;
@@ -334,6 +335,7 @@ const Chat: React.FC = () => {
                         // 流式完成后：使用 Markdown 渲染
                         <div className="markdown-content">
                           <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
                             components={{
                               code: ({ node, inline, className, children, ...props }: any) => (
                                 inline ? (
@@ -415,6 +417,15 @@ const Chat: React.FC = () => {
                                   border: '1px solid #ddd',
                                   padding: '8px 12px',
                                 }}>{children}</td>
+                              ),
+                              thead: ({ children }: any) => (
+                                <thead>{children}</thead>
+                              ),
+                              tbody: ({ children }: any) => (
+                                <tbody>{children}</tbody>
+                              ),
+                              tr: ({ children }: any) => (
+                                <tr>{children}</tr>
                               ),
                             }}
                           >
