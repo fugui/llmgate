@@ -20,6 +20,7 @@
 - **OpenAI 兼容**：提供与 OpenAI API 兼容的接口
 - **多客户端协议**：同时支持 OpenAI 和 Anthropic 客户端，自动转换为后端 LLM 支持的协议
 - **单文件部署**：前端资源嵌入二进制，仅需一个可执行文件
+- **默认模型 Fallback**：当请求的模型无可用后端时，自动 fallback 到默认模型
 
 ## 技术栈
 
@@ -87,6 +88,11 @@ server:
 
 database:
   path: "modelgate.db"      # SQLite 数据库文件路径
+
+# 默认模型 Fallback（可选）
+# 当客户端请求的模型没有可用后端时，自动使用此模型
+# 示例：客户端请求 "gpt-4" 但只配置了 kimi2.5 后端，系统自动使用 kimi2.5 处理
+#default_model: "kimi2.5"
 
 logs:
   path: "./logs"          # 日志目录
@@ -537,6 +543,13 @@ server {
 8. **SSO 配置**：如启用 SSO，确保正确配置 issuer_url 和 client_secret
 
 ## 版本历史
+
+### v0.4.1 (2025-03)
+- ✨ 新增默认模型 Fallback 功能（模型无后端时自动切换）
+- ✨ 访问日志支持 Claude 格式流式响应解析
+- ✨ 支持 Claude 思考块（thinking blocks）显示
+- 🐛 修复流式响应 Body 在 stats 页面显示为空的问题
+- ♻️ 优化响应体捕获大小限制处理
 
 ### v0.4.0 (2025-03)
 - ✨ 新增 SSO 单点登录支持（Azure AD / OIDC）
