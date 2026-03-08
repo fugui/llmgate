@@ -8,16 +8,17 @@ import (
 )
 
 type Config struct {
-	Server      ServerConfig      `yaml:"server"`
-	Database    DatabaseConfig    `yaml:"database"`
-	JWT         JWTConfig         `yaml:"jwt"`
-	Models      []ModelConfig     `yaml:"models"`
-	Policies    []PolicyConfig    `yaml:"quota_policies"`
-	Admin       AdminConfig       `yaml:"admin"`
-	Logs        LogConfig         `yaml:"logs"`
-	Frontend    FrontendConfig    `yaml:"frontend"`
-	Concurrency ConcurrencyConfig `yaml:"concurrency"`
-	SSO         SSOConfig         `yaml:"sso"`
+	Server       ServerConfig      `yaml:"server"`
+	Database     DatabaseConfig    `yaml:"database"`
+	JWT          JWTConfig         `yaml:"jwt"`
+	Models       []ModelConfig     `yaml:"models"`
+	Policies     []PolicyConfig    `yaml:"quota_policies"`
+	Admin        AdminConfig       `yaml:"admin"`
+	Logs         LogConfig         `yaml:"logs"`
+	Frontend     FrontendConfig    `yaml:"frontend"`
+	Concurrency  ConcurrencyConfig `yaml:"concurrency"`
+	SSO          SSOConfig         `yaml:"sso"`
+	DefaultModel string            `yaml:"default_model"`
 }
 
 type ServerConfig struct {

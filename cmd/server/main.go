@@ -99,7 +99,7 @@ func main() {
 	log.Printf("Health check started with 30s interval")
 
 	// 初始化代理
-	proxyInstance := proxy.NewProxy(lb, quotaService, usageService, modelStore, backendStore, userStore)
+	proxyInstance := proxy.NewProxy(lb, quotaService, usageService, modelStore, backendStore, userStore, cfg.DefaultModel)
 
 	// 设置配置变更监听 - 热重载支持
 	configChanges := cfgManager.Subscribe()

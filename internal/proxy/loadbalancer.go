@@ -82,22 +82,35 @@ func (lb *RoundRobinBalancer) AddBackend(modelID string, backend Backend) {
 	}
 }
 
-func (lb *RoundRobinBalancer) Next(modelID string) (*Backend, bool) {
+func (lb *RoundRobinBalancer) Next(modelID string, defaultModel string) (*Backend, bool) {
 	lb.mu.RLock()
 	defer lb.mu.RUnlock()
 
 	backends, exists := lb.backends[modelID]
-	if !exists {
+	if !exists || len(backends) == 0 {
+		// 如果没有找到对应 model 的 backend，尝试使用 default model
+		if defaultModel != "" && defaultModel != modelID {
+			logger.Infof("Next: no backends found for model %s, trying default model %s", modelID, defaultModel)
+			return lb.tryGetBackend(defaultModel, modelID)
+		}
 		logger.Infof("Next: no backends found for model %s (not in map)", modelID)
 		return nil, false
 	}
+
+	return lb.tryGetBackend(modelID, modelID)
+}
+
+// tryGetBackend 尝试获取指定 model 的 backend
+// requestedModel 是原始请求的 model（用于日志）
+// lookupModel 是要查找 backend 的 model
+func (lb *RoundRobinBalancer) tryGetBackend(lookupModel string, requestedModel string) (*Backend, bool) {
+	backends := lb.backends[lookupModel]
 	if len(backends) == 0 {
-		logger.Infof("Next: backend list empty for model %s", modelID)
 		return nil, false
 	}
 
 	// 找到健康的后端
-	counter := lb.counters[modelID]
+	counter := lb.counters[lookupModel]
 	attempts := len(backends)
 	healthyCount := 0
 
@@ -107,12 +120,19 @@ func (lb *RoundRobinBalancer) Next(modelID string) (*Backend, bool) {
 
 		if health, ok := lb.health[backend.ID]; ok && health.Healthy {
 			healthyCount++
+			if lookupModel != requestedModel {
+				logger.Infof("Next: using fallback model %s for request model %s (backend: %s)", lookupModel, requestedModel, backend.ID)
+			}
 			return &backend, true
 		}
 	}
 
 	// 所有后端都不健康，返回第一个（降级）
-	logger.Infof("Next: all %d backends for model %s are unhealthy, using fallback", len(backends), modelID)
+	if lookupModel != requestedModel {
+		logger.Infof("Next: all %d backends for fallback model %s are unhealthy, using first backend", len(backends), lookupModel)
+	} else {
+		logger.Infof("Next: all %d backends for model %s are unhealthy, using first backend", len(backends), lookupModel)
+	}
 	return &backends[0], true
 }
 
