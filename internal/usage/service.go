@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"modelgate/internal/constants"
 	"modelgate/internal/logger"
 )
 
@@ -129,9 +130,9 @@ func (s *Service) RecordAccessDetailed(
 		RequestBytes:    requestBytes,
 		ResponseBytes:   responseBytes,
 		RequestHeaders:  requestHeaders,
-		RequestBody:     truncateString(requestBody, 256*1024),
+		RequestBody:     truncateString(requestBody, constants.MaxLogRequestBodySize),
 		ResponseHeaders: responseHeaders,
-		ResponseBody:    truncateString(responseBody, 256*1024),
+		ResponseBody:    truncateString(responseBody, constants.MaxLogResponseBodySize),
 	}
 
 	// 存入 ring buffer

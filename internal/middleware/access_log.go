@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"modelgate/internal/constants"
 )
 
 const (
@@ -85,7 +86,7 @@ func AccessLogMiddleware(usageService UsageRecorder) gin.HandlerFunc {
 		var requestBody []byte
 		if c.Request.Body != nil && c.Request.ContentLength > 0 {
 			var err error
-			requestBody, err = io.ReadAll(io.LimitReader(c.Request.Body, 256*1024))
+			requestBody, err = io.ReadAll(io.LimitReader(c.Request.Body, constants.MaxLogRequestBodySize))
 			if err != nil {
 				// 读取失败时继续处理，只是记录空请求体
 				requestBody = []byte{}

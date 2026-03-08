@@ -257,6 +257,24 @@ func (p *Proxy) handleNormalResponse(c *gin.Context, resp *http.Response, userID
 		return
 	}
 
+	// 检查是否需要解压 gzip 响应
+	decompressed := false
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzipReader, err := gzip.NewReader(bytes.NewReader(respBody))
+		if err != nil {
+			logger.Warnw("failed to create gzip reader", "error", err)
+		} else {
+			defer gzipReader.Close()
+			decompressedBody, err := io.ReadAll(gzipReader)
+			if err != nil {
+				logger.Warnw("failed to decompress gzip response", "error", err)
+			} else {
+				respBody = decompressedBody
+				decompressed = true
+			}
+		}
+	}
+
 	latency := int(time.Since(startTime).Milliseconds())
 
 	// 记录使用日志（不含 token）
@@ -273,8 +291,20 @@ func (p *Proxy) handleNormalResponse(c *gin.Context, resp *http.Response, userID
 	// 记录请求（增加请求计数）
 	_ = p.quotaService.RecordRequest(userID, modelID)
 
+	// 只有在成功解压后才删除 Content-Encoding header
+	if decompressed {
+		resp.Header.Del("Content-Encoding")
+	}
+
+	// 设置 Content-Type（确保中间件能正确捕获）
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json" // 默认 Content-Type
+	}
+	c.Header("Content-Type", contentType)
+
 	// 返回响应
-	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
+	c.Data(resp.StatusCode, contentType, respBody)
 }
 
 // BackendRequest 后端请求参数
