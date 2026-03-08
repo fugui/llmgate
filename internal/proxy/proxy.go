@@ -21,16 +21,17 @@ import (
 
 // Proxy LLM 代理
 type Proxy struct {
-	lb           *RoundRobinBalancer
-	quotaService *quota.Service
-	usageService *usage.Service
-	httpClient   *http.Client
-	modelStore   *entity.ModelStore
-	backendStore *entity.BackendStore
-	userStore    *entity.UserStore
+	lb            *RoundRobinBalancer
+	quotaService  *quota.Service
+	usageService  *usage.Service
+	httpClient    *http.Client
+	modelStore    *entity.ModelStore
+	backendStore  *entity.BackendStore
+	userStore     *entity.UserStore
+	defaultModel  string
 }
 
-func NewProxy(lb *RoundRobinBalancer, quotaService *quota.Service, usageService *usage.Service, modelStore *entity.ModelStore, backendStore *entity.BackendStore, userStore *entity.UserStore) *Proxy {
+func NewProxy(lb *RoundRobinBalancer, quotaService *quota.Service, usageService *usage.Service, modelStore *entity.ModelStore, backendStore *entity.BackendStore, userStore *entity.UserStore, defaultModel string) *Proxy {
 	return &Proxy{
 		lb:           lb,
 		quotaService: quotaService,
@@ -39,6 +40,7 @@ func NewProxy(lb *RoundRobinBalancer, quotaService *quota.Service, usageService 
 		modelStore:   modelStore,
 		backendStore: backendStore,
 		userStore:    userStore,
+		defaultModel: defaultModel,
 	}
 }
 
@@ -132,7 +134,7 @@ func (p *Proxy) HandleChatCompletions(c *gin.Context, userID uuid.UUID, apiKeyID
 	userAgent := c.Request.UserAgent()
 
 	// 选择后端
-	backend, ok := p.lb.Next(modelID)
+	backend, ok := p.lb.Next(modelID, p.defaultModel)
 	if !ok {
 		// 记录失败日志
 		p.usageService.RecordUsageDetailed(&usage.Record{
@@ -361,7 +363,7 @@ func (p *Proxy) ExecuteCoreWorkflow(
 	}
 
 	// 选择后端
-	backend, ok := p.lb.Next(req.ModelID)
+	backend, ok := p.lb.Next(req.ModelID, p.defaultModel)
 	if !ok {
 		p.usageService.RecordUsageDetailed(&usage.Record{
 			UserID:     req.UserID,
