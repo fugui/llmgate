@@ -45,8 +45,14 @@ func (r *responseRecorder) Write(b []byte) (int, error) {
 
 func (r *responseRecorder) WriteString(s string) (int, error) {
 	// 延迟判断是否应该捕获响应体（确保 Content-Type 已设置）
-	if r.shouldCapture() && r.body != nil {
-		r.body.WriteString(s)
+	if r.shouldCapture() && r.body != nil && r.body.Len() < maxBodySize {
+		// 只捕获前 maxBodySize 字节
+		remaining := maxBodySize - r.body.Len()
+		if int64(len(s)) > int64(remaining) {
+			r.body.WriteString(s[:remaining])
+		} else {
+			r.body.WriteString(s)
+		}
 	}
 	n, err := r.ResponseWriter.WriteString(s)
 	r.written += int64(n)
@@ -169,25 +175,25 @@ func AccessLogMiddleware(usageService UsageRecorder) gin.HandlerFunc {
 			}
 
 			// 异步记录访问日志，避免影响响应时间
-		// 在启动 goroutine 前复制数据，避免竞态条件
-		requestBodyCopy := make([]byte, len(requestBody))
-		copy(requestBodyCopy, requestBody)
-		responseBodyCopy := responseBody // string 是不可变的，无需深拷贝
+			// 在启动 goroutine 前复制数据，避免竞态条件
+			requestBodyCopy := make([]byte, len(requestBody))
+			copy(requestBodyCopy, requestBody)
+			responseBodyCopy := responseBody // string 是不可变的，无需深拷贝
 
-		go usageService.RecordAccessDetailed(
-			userID,
-			method,
-			path,
-			clientIP,
-			userAgent,
-			statusCode,
-			requestBytes,
-			responseBytes,
-			requestHeaders,
-			string(requestBodyCopy),
-			responseHeaders,
-			responseBodyCopy,
-		)
+			go usageService.RecordAccessDetailed(
+				userID,
+				method,
+				path,
+				clientIP,
+				userAgent,
+				statusCode,
+				requestBytes,
+				responseBytes,
+				requestHeaders,
+				string(requestBodyCopy),
+				responseHeaders,
+				responseBodyCopy,
+			)
 		}
 	}
 }
@@ -235,6 +241,7 @@ func isStreamResponse(contentType string) bool {
 }
 
 // parseStreamResponse 解析 SSE 流式响应，提取有效内容
+// 支持 OpenAI 格式 (choices[0].delta.content) 和 Claude 格式 (delta.text)
 func parseStreamResponse(body []byte) string {
 	var contents []string
 	var toolCalls []string
@@ -257,7 +264,7 @@ func parseStreamResponse(body []byte) string {
 			continue
 		}
 
-		// 提取 delta/content
+		// 尝试 OpenAI 格式: choices[0].delta.content
 		if choices, ok := event["choices"].([]interface{}); ok && len(choices) > 0 {
 			choice, ok := choices[0].(map[string]interface{})
 			if !ok {
@@ -274,11 +281,28 @@ func parseStreamResponse(body []byte) string {
 				}
 			}
 		}
+
+		// 尝试 Claude 格式: delta.text
+		if delta, ok := event["delta"].(map[string]interface{}); ok {
+			// Claude 使用 delta.text 而不是 delta.content
+			if text, ok := delta["text"].(string); ok && text != "" {
+				contents = append(contents, text)
+			}
+			// Claude 思考块
+			if thinking, ok := delta["thinking"].(string); ok && thinking != "" {
+				contents = append(contents, "[Thinking]: "+thinking)
+			}
+		}
 	}
 
 	result := strings.Join(contents, "")
 	if len(toolCalls) > 0 {
 		result += "\n[TOOL_CALLS]: " + strings.Join(toolCalls, ", ")
+	}
+
+	// 如果没有提取到任何内容，返回原始 body（可能是未知格式）
+	if result == "" && len(body) > 0 {
+		return string(body)
 	}
 
 	return result
