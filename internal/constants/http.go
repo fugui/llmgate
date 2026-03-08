@@ -30,7 +30,13 @@ const (
 
 // API prefixes
 const (
-	APIPrefix       = "/api/v1"
-	AdminAPIPrefix  = "/api/v1/admin"
-	ProxyAPIPrefix  = "/v1"
+	APIPrefix      = "/api/v1"
+	AdminAPIPrefix = "/api/v1/admin"
+	ProxyAPIPrefix = "/v1"
+)
+
+// Log Body Size Limits
+const (
+	MaxLogRequestBodySize  = 512 * 1024 // 最大请求体记录大小: 512KB
+	MaxLogResponseBodySize = 512 * 1024 // 最大响应体记录大小: 512KB
 )
