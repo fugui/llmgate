@@ -62,9 +62,6 @@ const Login: React.FC = () => {
             </Button>
           </Form.Item>
         </Form>
-        <p style={{ textAlign: 'center', color: '#999' }}>
-          默认管理员: admin@modelgate.local / admin123
-        </p>
       </Card>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Avatar, Dropdown } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Modal, Form, Input, message } from 'antd';
 import {
   MessageOutlined,
   DashboardOutlined,
@@ -10,6 +10,7 @@ import {
   UserOutlined,
   DownOutlined,
   SettingOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import api from '../api';
@@ -26,6 +27,9 @@ const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [config, setConfig] = useState<FrontendConfig | null>(null);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [passwordForm] = Form.useForm();
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const storedUser = localStorage.getItem('user');
   const user = storedUser && storedUser !== 'undefined' ? JSON.parse(storedUser) : {};
@@ -47,6 +51,39 @@ const MainLayout: React.FC = () => {
     navigate('/login');
   };
 
+  const handleChangePassword = () => {
+    setPasswordModalVisible(true);
+  };
+
+  const handlePasswordModalOk = async () => {
+    try {
+      const values = await passwordForm.validateFields();
+      setChangingPassword(true);
+
+      await api.put('/api/v1/user/password', {
+        old_password: values.oldPassword,
+        new_password: values.newPassword,
+      });
+
+      message.success('密码修改成功，请重新登录');
+      setPasswordModalVisible(false);
+      passwordForm.resetFields();
+
+      // 修改成功后退出登录
+      localStorage.clear();
+      navigate('/login');
+    } catch (err: any) {
+      message.error(err.response?.data?.error || '密码修改失败');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const handlePasswordModalCancel = () => {
+    setPasswordModalVisible(false);
+    passwordForm.resetFields();
+  };
+
   const userMenuItems = [
     {
       key: 'profile',
@@ -56,6 +93,12 @@ const MainLayout: React.FC = () => {
     },
     {
       type: 'divider' as const,
+    },
+    {
+      key: 'change-password',
+      icon: <LockOutlined />,
+      label: '修改密码',
+      onClick: handleChangePassword,
     },
     {
       key: 'logout',
@@ -223,6 +266,53 @@ const MainLayout: React.FC = () => {
           <Outlet />
         </Content>
       </div>
+
+      {/* 修改密码弹窗 */}
+      <Modal
+        title="修改密码"
+        open={passwordModalVisible}
+        onOk={handlePasswordModalOk}
+        onCancel={handlePasswordModalCancel}
+        confirmLoading={changingPassword}
+        maskClosable={false}
+      >
+        <Form form={passwordForm} layout="vertical">
+          <Form.Item
+            name="oldPassword"
+            label="当前密码"
+            rules={[{ required: true, message: '请输入当前密码' }]}
+          >
+            <Input.Password placeholder="请输入当前密码" />
+          </Form.Item>
+          <Form.Item
+            name="newPassword"
+            label="新密码"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码长度不能少于6位' },
+            ]}
+          >
+            <Input.Password placeholder="请输入新密码（至少6位）" />
+          </Form.Item>
+          <Form.Item
+            name="confirmPassword"
+            label="确认新密码"
+            rules={[
+              { required: true, message: '请确认新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('两次输入的密码不一致'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password placeholder="请再次输入新密码" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

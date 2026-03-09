@@ -20,6 +20,11 @@ import (
 	"modelgate/internal/usage"
 )
 
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+
 type QuotaService interface {
 	GetQuotaStats(userID uuid.UUID, policyName string) (map[string]interface{}, error)
 }
@@ -97,6 +102,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		auth.GET("/user/quota", h.GetQuota)
 		auth.GET("/user/usage", h.GetUsage)
 		auth.GET("/user/access-logs", h.GetAccessLogs)
+		auth.PUT("/user/password", h.ChangePassword)
 	}
 
 	// 管理员接口
@@ -675,4 +681,56 @@ func (h *Handler) parseIDToken(idToken string) (string, error) {
 	}
 
 	return email, nil
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	currentUser := middleware.GetCurrentUser(c)
+	if currentUser == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 获取用户完整信息（包含密码哈希）
+	user, err := h.store.GetByID(currentUser.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	// 验证旧密码
+	if !auth.CheckPassword(req.OldPassword, user.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "old password is incorrect"})
+		return
+	}
+
+	// 新密码不能和旧密码相同
+	if auth.CheckPassword(req.NewPassword, user.PasswordHash) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "new password cannot be the same as old password"})
+		return
+	}
+
+	// 生成新密码哈希
+	newPasswordHash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 更新密码
+	if err := h.store.UpdatePassword(currentUser.UserID, newPasswordHash); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "password changed successfully"})
 }

@@ -229,3 +229,11 @@ func (s *UserStore) Count() (int, error) {
 	err := s.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
 	return count, err
 }
+
+func (s *UserStore) UpdatePassword(userID uuid.UUID, passwordHash string) error {
+	_, err := s.db.Exec(
+		"UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		passwordHash, userID.String(),
+	)
+	return err
+}
