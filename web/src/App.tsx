@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import MainLayout from './components/MainLayout';
 import Chat from './pages/Chat';
 import UsageStats from './pages/UsageStats';
+import DashboardStats from './pages/DashboardStats';
 import APIKeyManage from './pages/APIKeyManage';
 import Admin from './pages/Admin';
 import BackendManage from './pages/BackendManage';
@@ -38,6 +39,7 @@ const App: React.FC = () => {
             <Route path="chat" element={<Chat />} />
             <Route path="stats" element={<UsageStats />} />
             <Route path="keys" element={<APIKeyManage />} />
+            <Route path="dashboard" element={<DashboardStats />} />
             <Route path="admin" element={<Navigate to="/admin/users" replace />} />
             <Route path="admin/models/:modelId/backends" element={<BackendManage />} />
             <Route path="admin/:tab" element={<Admin />} />

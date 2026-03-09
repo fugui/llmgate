@@ -130,7 +130,7 @@ CREATE TABLE quota_usage_daily (
 // InitServices 初始化服务（必须在 SetupTestDB 之后调用）
 func (s *TestScenario) InitServices() {
 	s.APIKeySvc = apikey.NewService(s.APIKeyStore, s.UserStore, s.Cache)
-	s.QuotaSvc = quota.NewService(s.QuotaStore, s.ModelStore)
+	s.QuotaSvc = quota.NewService(s.QuotaStore, s.ModelStore, nil)
 }
 
 // CreateUser 辅助方法：创建测试用户

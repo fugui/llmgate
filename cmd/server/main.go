@@ -17,6 +17,7 @@ import (
 	"modelgate/internal/cache"
 	"modelgate/internal/concurrency"
 	"modelgate/internal/config"
+	"modelgate/internal/dashboard"
 	"modelgate/internal/db"
 	"modelgate/internal/logger"
 	"modelgate/internal/admin"
@@ -84,7 +85,8 @@ func main() {
 
 	// 初始化服务层
 	apiKeyService := apikey.NewService(apiKeyStore, userStore, localCache)
-	quotaService := quota.NewService(quotaStore, modelStore)
+	dashboardService := dashboard.NewService(database.DB)
+	quotaService := quota.NewService(quotaStore, modelStore, dashboardService)
 	usageService := usage.NewService(userLogger)
 
 	// 初始化负载均衡器
@@ -163,6 +165,13 @@ func main() {
 
 	adminPolicyHandler := admin.NewPolicyHandler(quotaStore, userStore)
 	adminPolicyHandler.RegisterRoutes(api, jwtManager)
+
+	// 注册 Dashboard 路由（需要用户认证，但不需要管理员权限）
+	dashboardHandler := dashboard.NewHandler(dashboardService)
+	dashboardAPI := api.Group("/dashboard")
+	dashboardAPI.Use(middleware.AuthMiddlewareWithUserValidation(jwtManager, userStore))
+	dashboardHandler.RegisterRoutes(dashboardAPI)
+	log.Println("Dashboard routes registered at /api/v1/dashboard")
 
 	// 并发状态管理 API（管理员）
 	if concurrencyLimiter != nil {

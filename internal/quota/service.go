@@ -88,11 +88,17 @@ func (rc *RateCounter) GetCount(userID string, window int) int {
 	return rc.counts[key]
 }
 
+// DashboardRecorder 用于记录仪表板统计的接口
+type DashboardRecorder interface {
+	RecordHourlyStat(userID string)
+}
+
 type Service struct {
 	store             *entity.QuotaStore
 	modelStore        *entity.ModelStore
 	rateCounter       *RateCounter
 	dailyRequestCache *DailyRequestCounter
+	dashboardRecorder DashboardRecorder
 }
 
 // DailyRequestCounter 每日请求数内存计数器
@@ -150,12 +156,13 @@ func (c *DailyRequestCounter) CleanupExpired() {
 	}
 }
 
-func NewService(store *entity.QuotaStore, modelStore *entity.ModelStore) *Service {
+func NewService(store *entity.QuotaStore, modelStore *entity.ModelStore, dashboardRecorder DashboardRecorder) *Service {
 	s := &Service{
 		store:             store,
 		modelStore:        modelStore,
 		rateCounter:       NewRateCounter(),
 		dailyRequestCache: NewDailyRequestCounter(),
+		dashboardRecorder: dashboardRecorder,
 	}
 	// 启动每日清理任务
 	go s.dailyCleanupLoop()
@@ -275,6 +282,11 @@ func (s *Service) RecordRequest(userID uuid.UUID, modelID string) error {
 
 	// 更新内存缓存
 	s.dailyRequestCache.Add(userID.String(), time.Now())
+
+	// 记录小时级统计（用于仪表板）
+	if s.dashboardRecorder != nil {
+		s.dashboardRecorder.RecordHourlyStat(userID.String())
+	}
 
 	return nil
 }

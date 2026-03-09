@@ -11,6 +11,7 @@ import {
   DownOutlined,
   SettingOutlined,
   LockOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import api from '../api';
@@ -113,6 +114,7 @@ const MainLayout: React.FC = () => {
     if (path === '/chat' || path === '/') return 'chat';
     if (path === '/stats') return 'stats';
     if (path === '/keys') return 'keys';
+    if (path === '/dashboard') return 'dashboard';
     if (path === '/admin' || path.startsWith('/admin/')) return 'admin';
     return 'chat';
   };
@@ -135,6 +137,12 @@ const MainLayout: React.FC = () => {
       icon: <KeyOutlined />,
       label: 'API Key 管理',
       onClick: () => navigate('/keys'),
+    },
+    {
+      key: 'dashboard',
+      icon: <BarChartOutlined />,
+      label: '数据看板',
+      onClick: () => navigate('/dashboard'),
     },
     ...(user.role === 'admin' ? [{
       key: 'admin',
