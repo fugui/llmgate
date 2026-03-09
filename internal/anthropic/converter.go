@@ -476,7 +476,9 @@ func ConvertStreamLine(line string, originalReq *MessagesRequest, state map[stri
 	var sb strings.Builder
 
 	// 1. 处理消息开始 (message_start)
-	if _, hasRole := delta["role"]; hasRole {
+	// 不再依赖 delta["role"] 的存在与否，而是依赖状态字典，确保必定在流开始时发出一次 message_start
+	if started, _ := state["started_message"].(bool); !started {
+		state["started_message"] = true
 		msgID, _ := openaiStream["id"].(string)
 		if msgID == "" {
 			msgID = "msg_gen_" + generateID()
