@@ -6,7 +6,7 @@ import api from '../api';
 
 const UsageStats: React.FC = () => {
   const [quota, setQuota] = useState<any>({});
-  const [usageRecords, setUsageRecords] = useState<any[]>([]);
+  const [_usageRecords, setUsageRecords] = useState<any[]>([]);
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
   const [accessLogs, setAccessLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,25 +94,6 @@ const UsageStats: React.FC = () => {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
   };
-
-  const columns = [
-    {
-      title: '日期',
-      dataIndex: 'date',
-      key: 'date',
-    },
-    {
-      title: '模型',
-      dataIndex: 'model_id',
-      key: 'model_id',
-      render: (_: string, record: any) => record.model_id || '-',
-    },
-    {
-      title: '请求数',
-      dataIndex: 'request_count',
-      key: 'request_count',
-    },
-  ];
 
   // 访问日志表格列定义
   const accessLogColumns = [
@@ -269,17 +250,6 @@ const UsageStats: React.FC = () => {
             <Bar dataKey="requests" name="请求数" fill="#1890ff" />
           </BarChart>
         </ResponsiveContainer>
-      </Card>
-
-      {/* 最近使用记录 */}
-      <Card title="最近使用记录">
-        <Table
-          dataSource={usageRecords.slice(0, 10)}
-          columns={columns}
-          rowKey="id"
-          loading={loading}
-          pagination={false}
-        />
       </Card>
 
       {/* 详情弹窗 */}
