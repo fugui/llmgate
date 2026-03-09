@@ -12,7 +12,7 @@ import (
 // TestScenario_UserEndToEndFlow
 // 场景：完整用户流程
 // Given: 新用户注册
-// When: 用户登录 -> 创建 API Key -> 调用模型 -> 消耗 Token
+// When: 用户登录 -> 创建 API Key -> 调用模型 -> 消耗配额
 // Then: 配额正确扣减，使用记录可查
 func TestScenario_UserEndToEndFlow(t *testing.T) {
 	scenario := SetupTestDB(t)
@@ -38,10 +38,7 @@ func TestScenario_UserEndToEndFlow(t *testing.T) {
 
 	// Step 4: 创建 API Key
 	keyReq := &entity.APIKeyCreateRequest{
-		Name:            "开发测试",
-		Models:          []string{},
-		RateLimit:       0,
-		RateLimitWindow: 60,
+		Name: "开发测试",
 	}
 	keyWithSecret, err := scenario.APIKeySvc.GenerateKey(user.ID, keyReq)
 	require.NoError(t, err)
@@ -56,29 +53,29 @@ func TestScenario_UserEndToEndFlow(t *testing.T) {
 	t.Logf("✓ API Key 验证通过")
 
 	// Step 6: 检查配额（首次检查，应该通过）
-	quotaResult, err := scenario.QuotaSvc.CheckQuota(user.ID, "llama3-70b")
+	quotaResult, err := scenario.QuotaSvc.CheckQuota(user.ID, "default", "llama3-70b")
 	require.NoError(t, err)
 	assert.True(t, quotaResult.Allowed, "首次检查应该允许")
-	assert.Equal(t, int64(1000), quotaResult.DailyLimit)
-	assert.Equal(t, int64(0), quotaResult.DailyTokens)
-	t.Logf("✓ 配额检查通过: %d/%d tokens", quotaResult.DailyTokens, quotaResult.DailyLimit)
+	assert.Equal(t, 1000, quotaResult.DailyRequestLimit)
+	assert.Equal(t, 0, quotaResult.DailyRequests)
+	t.Logf("✓ 配额检查通过: %d/%d 请求", quotaResult.DailyRequests, quotaResult.DailyRequestLimit)
 
-	// Step 7: 模拟调用模型，扣除配额
-	err = scenario.QuotaSvc.DeductQuota(user.ID, "llama3-70b", 100, 50)
+	// Step 7: 模拟调用模型，记录请求
+	err = scenario.QuotaSvc.RecordRequest(user.ID, "llama3-70b")
 	require.NoError(t, err)
-	t.Logf("✓ 配额扣减: input=100, output=50")
+	t.Logf("✓ 请求已记录")
 
 	// Step 8: 再次检查配额
-	quotaResult, err = scenario.QuotaSvc.CheckQuota(user.ID, "llama3-70b")
+	quotaResult, err = scenario.QuotaSvc.CheckQuota(user.ID, "default", "llama3-70b")
 	require.NoError(t, err)
 	assert.True(t, quotaResult.Allowed)
-	assert.Equal(t, int64(150), quotaResult.DailyTokens) // 100 + 50
-	t.Logf("✓ 配额更新正确: %d/%d tokens", quotaResult.DailyTokens, quotaResult.DailyLimit)
+	assert.Equal(t, 1, quotaResult.DailyRequests)
+	t.Logf("✓ 配额更新正确: %d/%d 请求", quotaResult.DailyRequests, quotaResult.DailyRequestLimit)
 
 	// Step 9: 获取配额统计
-	stats, err := scenario.QuotaSvc.GetQuotaStats(user.ID)
+	stats, err := scenario.QuotaSvc.GetQuotaStats(user.ID, "default")
 	require.NoError(t, err)
-	assert.Equal(t, int64(150), stats["daily_tokens_used"])
-	assert.Equal(t, int64(1000), stats["daily_tokens_limit"])
-	t.Logf("✓ 配额统计正确: used=%d, limit=%d", stats["daily_tokens_used"], stats["daily_tokens_limit"])
+	assert.Equal(t, 1, stats["daily_requests_used"])
+	assert.Equal(t, 1000, stats["daily_requests_limit"])
+	t.Logf("✓ 配额统计正确: used=%d, limit=%d", stats["daily_requests_used"], stats["daily_requests_limit"])
 }
