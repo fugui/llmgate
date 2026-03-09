@@ -101,8 +101,8 @@ func (h *Handler) HandleMessages(c *gin.Context) {
 			return ConvertFromOpenAI(body, &anthropicReq)
 		},
 		// 流式行转换器
-		func(line string) (string, error) {
-			return ConvertStreamLine(line, &anthropicReq)
+		func(line string, state map[string]interface{}) (string, error) {
+			return ConvertStreamLine(line, &anthropicReq, state)
 		},
 		// Anthropic-compliant ping/keep-alive message
 		"event: ping\ndata: {\"type\": \"ping\"}\n\n",

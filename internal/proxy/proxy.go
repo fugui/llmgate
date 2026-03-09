@@ -331,7 +331,7 @@ func (p *Proxy) ExecuteCoreWorkflow(
 	c *gin.Context,
 	req *BackendRequest,
 	responseConverter func([]byte) ([]byte, error),
-	streamLineConverter func(string) (string, error),
+	streamLineConverter func(string, map[string]interface{}) (string, error),
 	pingMessage string,
 ) {
 	startTime := time.Now()
@@ -561,7 +561,7 @@ func (p *Proxy) handleConvertedStreamResponse(
 	req *BackendRequest,
 	backendID string,
 	startTime time.Time,
-	lineConverter func(string) (string, error),
+	lineConverter func(string, map[string]interface{}) (string, error),
 	pingMessage string,
 ) {
 	defer resp.Body.Close()
@@ -624,6 +624,9 @@ func (p *Proxy) handleConvertedStreamResponse(
 		reader = bufio.NewReader(resp.Body)
 	}
 
+	// 创建该流的状态跟踪器
+	streamState := make(map[string]interface{})
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -643,7 +646,7 @@ func (p *Proxy) handleConvertedStreamResponse(
 
 		// 转换每一行
 		if lineConverter != nil {
-			converted, err := lineConverter(line)
+			converted, err := lineConverter(line, streamState)
 			writeMu.Lock()
 			if err != nil {
 				// 转换失败时透传原始行

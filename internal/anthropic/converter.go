@@ -404,7 +404,7 @@ func ConvertFromOpenAI(body []byte, originalReq *MessagesRequest) ([]byte, error
 }
 
 // ConvertStreamLine 转换流式响应的每一行
-func ConvertStreamLine(line string, originalReq *MessagesRequest) (string, error) {
+func ConvertStreamLine(line string, originalReq *MessagesRequest, state map[string]interface{}) (string, error) {
 	// 处理空行或注释
 	if line == "\n" || line == "" || strings.HasPrefix(line, ":") {
 		return line, nil
@@ -420,7 +420,21 @@ func ConvertStreamLine(line string, originalReq *MessagesRequest) (string, error
 
 	// 处理 [DONE]
 	if data == "[DONE]" {
-		return "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", nil
+		var sb strings.Builder
+		
+		// 如果有活跃的内容块，先结束它
+		if active, ok := state["active_block_index"].(int); ok && active >= 0 {
+			event := map[string]interface{}{
+				"type":  "content_block_stop",
+				"index": active,
+			}
+			ej, _ := json.Marshal(event)
+			sb.WriteString(fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", ej))
+			state["active_block_index"] = -1
+		}
+		
+		sb.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+		return sb.String(), nil
 	}
 
 	// 解析 OpenAI 流式响应
@@ -486,6 +500,23 @@ func ConvertStreamLine(line string, originalReq *MessagesRequest) (string, error
 
 	// 2. 处理推理内容 (thinking delta)
 	if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
+		// Emit content_block_start for thinking if not started yet
+		if started, _ := state["started_thinking"].(bool); !started {
+			state["started_thinking"] = true
+			state["active_block_index"] = 0
+			
+			startEvent := map[string]interface{}{
+				"type":  "content_block_start",
+				"index": 0,
+				"content_block": map[string]interface{}{
+					"type": "thinking",
+					"thinking": "",
+				},
+			}
+			ej, _ := json.Marshal(startEvent)
+			sb.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", ej))
+		}
+		
 		event := map[string]interface{}{
 			"type":  "content_block_delta",
 			"index": 0,
@@ -500,6 +531,34 @@ func ConvertStreamLine(line string, originalReq *MessagesRequest) (string, error
 
 	// 3. 处理文本内容 (content_block_delta)
 	if content, ok := delta["content"].(string); ok && content != "" {
+		// Stop thinking block if it was active
+		if active, ok := state["active_block_index"].(int); ok && active == 0 {
+			stopEvent := map[string]interface{}{
+				"type":  "content_block_stop",
+				"index": 0,
+			}
+			ej, _ := json.Marshal(stopEvent)
+			sb.WriteString(fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", ej))
+			state["active_block_index"] = -1
+		}
+
+		// Emit content_block_start for text if not started yet
+		if started, _ := state["started_text"].(bool); !started {
+			state["started_text"] = true
+			state["active_block_index"] = 1
+			
+			startEvent := map[string]interface{}{
+				"type":  "content_block_start",
+				"index": 1,
+				"content_block": map[string]interface{}{
+					"type": "text",
+					"text": "",
+				},
+			}
+			ej, _ := json.Marshal(startEvent)
+			sb.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", ej))
+		}
+		
 		event := map[string]interface{}{
 			"type":  "content_block_delta",
 			"index": 1, // 推理通常在 0，文本在 1
@@ -556,6 +615,17 @@ func ConvertStreamLine(line string, originalReq *MessagesRequest) (string, error
 
 	// 5. 处理结束原因 (message_delta)
 	if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
+		// 如果有活跃的内容块，先结束它
+		if active, ok := state["active_block_index"].(int); ok && active >= 0 {
+			stopEvent := map[string]interface{}{
+				"type":  "content_block_stop",
+				"index": active,
+			}
+			ej, _ := json.Marshal(stopEvent)
+			sb.WriteString(fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", ej))
+			state["active_block_index"] = -1
+		}
+		
 		stopReason := convertStopReason(fr)
 		event := map[string]interface{}{
 			"type": "message_delta",
