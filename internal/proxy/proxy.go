@@ -594,9 +594,35 @@ func adjustMaxTokens(body []byte, contextWindow int) []byte {
 
 	// 抽出文本以估算 Tokens
 	var contentBuilder strings.Builder
+
+	// 1. 尝试追加 System (OpenAI/Anthropic compatible map access)
+	if system, ok := payload["system"]; ok {
+		switch v := system.(type) {
+		case string:
+			contentBuilder.WriteString(v)
+		case []interface{}: // Anthropic system format array
+			for _, blockObj := range v {
+				if blockMap, ok := blockObj.(map[string]interface{}); ok {
+					if bText, _ := blockMap["text"].(string); bText != "" {
+						contentBuilder.WriteString(bText)
+					}
+				}
+			}
+		}
+	}
+
+	// 2. 尝试追加 Messages
 	if messages, ok := payload["messages"].([]interface{}); ok {
 		for _, msgObj := range messages {
 			if msgMap, ok := msgObj.(map[string]interface{}); ok {
+				// OpenAI system prompts live in messages
+				if role, _ := msgMap["role"].(string); role == "system" {
+					if content, _ := msgMap["content"].(string); content != "" {
+						contentBuilder.WriteString(content)
+						continue
+					}
+				}
+
 				if content, ok := msgMap["content"]; ok {
 					switch v := content.(type) {
 					case string:
@@ -609,11 +635,25 @@ func adjustMaxTokens(body []byte, contextWindow int) []byte {
 									if bText, _ := blockMap["text"].(string); bText != "" {
 										contentBuilder.WriteString(bText)
 									}
+								} else if bType == "tool_result" {
+									if cObj, ok := blockMap["content"].(string); ok {
+										contentBuilder.WriteString(cObj)
+									}
 								}
 							}
 						}
 					}
 				}
+			}
+		}
+	}
+
+	// 3. 尝试追加 Tools / Functions
+	if tools, ok := payload["tools"].([]interface{}); ok {
+		for _, toolObj := range tools {
+			// 直接将 tool 的整个 JSON 序列化加进评估，因为结构和描述都算 token
+			if b, err := json.Marshal(toolObj); err == nil {
+				contentBuilder.Write(b)
 			}
 		}
 	}
