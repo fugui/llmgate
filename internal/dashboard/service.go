@@ -127,6 +127,8 @@ func (s *Service) RecordHourlyStat(userID string) {
 // DashboardStats 系统概览
 type DashboardStats struct {
 	TodayTotalRequests int64   `json:"today_total_requests"`  // 今日总请求
+	TodayInputTokens   int64   `json:"today_input_tokens"`    // 今日输入Token
+	TodayOutputTokens  int64   `json:"today_output_tokens"`   // 今日输出Token
 	ActiveUsers        int     `json:"active_users"`          // 今日活跃用户
 	TotalUsers         int     `json:"total_users"`           // 总用户数
 	DepartmentCount    int     `json:"department_count"`      // 部门数量
@@ -135,10 +137,12 @@ type DashboardStats struct {
 
 // TopUser TOP用户
 type TopUser struct {
-	UserID       string `json:"user_id"`
-	Name         string `json:"name"`
-	Department   string `json:"department"`
-	RequestCount int    `json:"request_count"`
+	UserID        string `json:"user_id"`
+	Name          string `json:"name"`
+	Department    string `json:"department"`
+	RequestCount  int    `json:"request_count"`
+	InputTokens   int64  `json:"input_tokens"`
+	OutputTokens  int64  `json:"output_tokens"`
 }
 
 // HourlyStat 小时统计
@@ -158,6 +162,8 @@ type DepartmentStat struct {
 type ModelStat struct {
 	ModelID      string `json:"model_id"`
 	RequestCount int    `json:"request_count"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
 }
 
 // GetDashboardStats 获取系统概览数据
@@ -166,9 +172,10 @@ func (s *Service) GetDashboardStats() (*DashboardStats, error) {
 
 	stats := &DashboardStats{}
 
-	// 今日总请求数
-	query := `SELECT COALESCE(SUM(request_count), 0) FROM quota_usage_daily WHERE date = ?`
-	err := s.db.QueryRow(query, today).Scan(&stats.TodayTotalRequests)
+	// 今日总请求数 + Token 合计
+	query := `SELECT COALESCE(SUM(request_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)
+	          FROM quota_usage_daily WHERE date = ?`
+	err := s.db.QueryRow(query, today).Scan(&stats.TodayTotalRequests, &stats.TodayInputTokens, &stats.TodayOutputTokens)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get today total requests: %w", err)
 	}
@@ -211,7 +218,10 @@ func (s *Service) GetTopUsers(limit int) ([]TopUser, error) {
 	today := time.Now().Format("2006-01-02")
 
 	query := `
-		SELECT u.id, u.name, u.department, COALESCE(SUM(q.request_count), 0) as request_count
+		SELECT u.id, u.name, u.department,
+		       COALESCE(SUM(q.request_count), 0) as request_count,
+		       COALESCE(SUM(q.input_tokens), 0) as input_tokens,
+		       COALESCE(SUM(q.output_tokens), 0) as output_tokens
 		FROM users u
 		LEFT JOIN quota_usage_daily q ON u.id = q.user_id AND q.date = ?
 		GROUP BY u.id, u.name, u.department
@@ -228,7 +238,7 @@ func (s *Service) GetTopUsers(limit int) ([]TopUser, error) {
 	for rows.Next() {
 		var user TopUser
 		var userID uuid.UUID
-		err := rows.Scan(&userID, &user.Name, &user.Department, &user.RequestCount)
+		err := rows.Scan(&userID, &user.Name, &user.Department, &user.RequestCount, &user.InputTokens, &user.OutputTokens)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan top user: %w", err)
 		}
@@ -282,7 +292,10 @@ func (s *Service) GetModelStats() ([]ModelStat, error) {
 	today := time.Now().Format("2006-01-02")
 
 	query := `
-		SELECT model_id, COALESCE(SUM(request_count), 0) as request_count
+		SELECT model_id,
+		       COALESCE(SUM(request_count), 0) as request_count,
+		       COALESCE(SUM(input_tokens), 0) as input_tokens,
+		       COALESCE(SUM(output_tokens), 0) as output_tokens
 		FROM quota_usage_daily
 		WHERE date = ?
 		GROUP BY model_id
@@ -297,7 +310,7 @@ func (s *Service) GetModelStats() ([]ModelStat, error) {
 	var stats []ModelStat
 	for rows.Next() {
 		var stat ModelStat
-		err := rows.Scan(&stat.ModelID, &stat.RequestCount)
+		err := rows.Scan(&stat.ModelID, &stat.RequestCount, &stat.InputTokens, &stat.OutputTokens)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan model stat: %w", err)
 		}

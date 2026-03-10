@@ -60,7 +60,7 @@ func NewService(logger *logger.UserLogger) *Service {
 	}
 }
 
-// RecordUsageDetailed 记录详细的使用信息
+// RecordUsageDetailed 记录详细的使用信息（写文件日志 + ring buffer）
 func (s *Service) RecordUsageDetailed(record *Record) {
 	s.logger.LogUsageWithDetails(record.UserID.String(), logger.UsageLogEntry{
 		Time:       time.Now().Format(time.RFC3339),
@@ -74,6 +74,31 @@ func (s *Service) RecordUsageDetailed(record *Record) {
 		InputTokens:  record.InputTokens,
 		OutputTokens: record.OutputTokens,
 	})
+
+	// 同时将记录写入内存 ring buffer，供 /stats 页面读取 Token 展示
+	s.logsMutex.Lock()
+	defer s.logsMutex.Unlock()
+
+	r, exists := s.accessLogs[record.UserID]
+	if !exists {
+		r = ring.New(s.maxLogs)
+		s.accessLogs[record.UserID] = r
+	}
+
+	r.Value = AccessLog{
+		UserID:       record.UserID,
+		Method:       "POST",
+		Path:         "/v1/chat/completions",
+		ClientIP:     record.ClientIP,
+		UserAgent:    record.UserAgent,
+		Timestamp:    time.Now(),
+		StatusCode:   record.StatusCode,
+		RequestBytes: 0, // 已由中间件记录，此处不重复记录
+		ResponseBytes: 0,
+		InputTokens:  record.InputTokens,
+		OutputTokens: record.OutputTokens,
+	}
+	s.accessLogs[record.UserID] = r.Next()
 }
 
 // CleanupOldRecords 清理旧记录（由 logger 自动处理）

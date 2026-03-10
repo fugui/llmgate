@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Statistic, Table, Progress, Row, Col, Spin, Empty } from 'antd';
+import { Card, Statistic, Table, Progress, Row, Col, Spin, Empty, Tag } from 'antd';
 import {
   BarChart,
   Bar,
@@ -18,12 +18,17 @@ import {
   RiseOutlined,
   ApartmentOutlined,
   BarChartOutlined,
+  ThunderboltOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
 } from '@ant-design/icons';
 import api from '../api';
 
 // 类型定义
 interface DashboardStats {
   today_total_requests: number;
+  today_input_tokens: number;
+  today_output_tokens: number;
   active_users: number;
   total_users: number;
   department_count: number;
@@ -35,6 +40,8 @@ interface TopUser {
   name: string;
   department: string;
   request_count: number;
+  input_tokens: number;
+  output_tokens: number;
 }
 
 interface HourlyStat {
@@ -51,6 +58,8 @@ interface DepartmentStat {
 interface ModelStat {
   model_id: string;
   request_count: number;
+  input_tokens: number;
+  output_tokens: number;
 }
 
 // 饼图颜色配置
@@ -64,6 +73,13 @@ const PIE_COLORS = [
   '#eb2f96',
   '#fa541c',
 ];
+
+// 格式化 Token 数量
+const formatTokens = (count: number): string => {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+  return String(count);
+};
 
 const DashboardStatsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -106,7 +122,7 @@ const DashboardStatsPage: React.FC = () => {
     {
       title: '排名',
       key: 'rank',
-      width: 60,
+      width: 55,
       render: (_: any, __: any, index: number) => (
         <span
           style={{
@@ -135,7 +151,7 @@ const DashboardStatsPage: React.FC = () => {
       title: '请求数',
       dataIndex: 'request_count',
       key: 'request_count',
-      width: 100,
+      width: 90,
       render: (count: number) => {
         const maxCount = topUsers[0]?.request_count || 1;
         const percent = (count / maxCount) * 100;
@@ -152,6 +168,23 @@ const DashboardStatsPage: React.FC = () => {
         );
       },
     },
+    {
+      title: 'Tokens',
+      key: 'tokens',
+      width: 120,
+      render: (_: any, record: TopUser) => (
+        <div style={{ fontSize: 12 }}>
+          <div>
+            <ArrowUpOutlined style={{ color: '#52c41a', marginRight: 3 }} />
+            <span style={{ color: '#52c41a' }}>{formatTokens(record.input_tokens || 0)}</span>
+          </div>
+          <div>
+            <ArrowDownOutlined style={{ color: '#1890ff', marginRight: 3 }} />
+            <span style={{ color: '#1890ff' }}>{formatTokens(record.output_tokens || 0)}</span>
+          </div>
+        </div>
+      ),
+    },
   ];
 
   // 部门统计表格列
@@ -166,13 +199,48 @@ const DashboardStatsPage: React.FC = () => {
       title: '用户数',
       dataIndex: 'user_count',
       key: 'user_count',
-      width: 80,
+      width: 70,
     },
     {
       title: '请求数',
       dataIndex: 'request_count',
       key: 'request_count',
+      width: 80,
+    },
+  ];
+
+  // 模型统计表格列（用于展示模型 Token 汇总）
+  const modelTokenColumns = [
+    {
+      title: '模型',
+      dataIndex: 'model_id',
+      key: 'model_id',
+      ellipsis: true,
+      render: (id: string) => <Tag color="blue">{id}</Tag>,
+    },
+    {
+      title: '请求数',
+      dataIndex: 'request_count',
+      key: 'request_count',
+      width: 75,
+    },
+    {
+      title: '输入 Tokens',
+      dataIndex: 'input_tokens',
+      key: 'input_tokens',
       width: 100,
+      render: (v: number) => (
+        <span style={{ color: '#52c41a' }}>{formatTokens(v || 0)}</span>
+      ),
+    },
+    {
+      title: '输出 Tokens',
+      dataIndex: 'output_tokens',
+      key: 'output_tokens',
+      width: 100,
+      render: (v: number) => (
+        <span style={{ color: '#1890ff' }}>{formatTokens(v || 0)}</span>
+      ),
     },
   ];
 
@@ -183,6 +251,8 @@ const DashboardStatsPage: React.FC = () => {
       </div>
     );
   }
+
+  const todayTotalTokens = (stats?.today_input_tokens || 0) + (stats?.today_output_tokens || 0);
 
   return (
     <div>
@@ -217,22 +287,35 @@ const DashboardStatsPage: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="部门数量"
-              value={stats?.department_count || 0}
-              prefix={<ApartmentOutlined style={{ color: '#faad14' }} />}
+              title="今日总 Tokens"
+              value={todayTotalTokens}
+              formatter={(v) => formatTokens(Number(v))}
+              prefix={<ThunderboltOutlined style={{ color: '#faad14' }} />}
               valueStyle={{ color: '#faad14' }}
             />
+            <div style={{ marginTop: 8, fontSize: 12, color: '#999', display: 'flex', gap: 12 }}>
+              <span>
+                <ArrowUpOutlined style={{ color: '#52c41a' }} />
+                {' 输入 '}{formatTokens(stats?.today_input_tokens || 0)}
+              </span>
+              <span>
+                <ArrowDownOutlined style={{ color: '#1890ff' }} />
+                {' 输出 '}{formatTokens(stats?.today_output_tokens || 0)}
+              </span>
+            </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="人均请求"
-              value={stats?.avg_requests_per_user || 0}
-              precision={1}
-              prefix={<BarChartOutlined style={{ color: '#722ed1' }} />}
+              title="部门数量"
+              value={stats?.department_count || 0}
+              prefix={<ApartmentOutlined style={{ color: '#722ed1' }} />}
               valueStyle={{ color: '#722ed1' }}
             />
+            <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+              人均请求 {(stats?.avg_requests_per_user || 0).toFixed(1)} 次
+            </div>
           </Card>
         </Col>
       </Row>
@@ -277,7 +360,66 @@ const DashboardStatsPage: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 部门统计 + 模型分布 */}
+      {/* 模型 Token 统计 */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col xs={24}>
+          <Card title="今日模型 Token 消耗">
+            {modelStats.length > 0 && modelStats.some(s => s.request_count > 0) ? (
+              <Row gutter={16}>
+                <Col xs={24} lg={12}>
+                  <Table
+                    dataSource={modelStats.filter(s => s.request_count > 0)}
+                    columns={modelTokenColumns}
+                    rowKey="model_id"
+                    pagination={false}
+                    size="small"
+                    scroll={{ y: 250 }}
+                  />
+                </Col>
+                <Col xs={24} lg={12}>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={modelStats.filter(s => (s.input_tokens || 0) + (s.output_tokens || 0) > 0).map(s => ({
+                          ...s,
+                          total_tokens: (s.input_tokens || 0) + (s.output_tokens || 0),
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={90}
+                        paddingAngle={2}
+                        dataKey="total_tokens"
+                        nameKey="model_id"
+                        label={({ model_id, percent }) =>
+                          `${model_id} ${(percent * 100).toFixed(0)}%`
+                        }
+                      >
+                        {modelStats.map((_entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={PIE_COLORS[index % PIE_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number, _name: string, props: any) => {
+                          return [`${formatTokens(value)} Tokens`, props.payload.model_id];
+                        }}
+                      />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Col>
+              </Row>
+            ) : (
+              <Empty description="暂无数据" style={{ padding: '40px 0' }} />
+            )}
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 部门统计 + 模型请求分布 */}
       <Row gutter={16}>
         <Col xs={24} lg={12}>
           <Card title="部门使用统计">
@@ -296,7 +438,7 @@ const DashboardStatsPage: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="模型使用分布">
+          <Card title="模型请求分布">
             {modelStats.length > 0 && modelStats.some(s => s.request_count > 0) ? (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
