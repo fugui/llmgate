@@ -222,11 +222,13 @@ func (s *Service) CheckQuota(userID uuid.UUID, policyName string, modelID string
 		result.Reason = "rate limit exceeded"
 		result.RateLimit = policy.RateLimit
 		result.RateRemaining = 0
+		result.RateLimitWindow = policy.RateLimitWindow
 		return result, nil
 	}
 
 	result.RateLimit = policy.RateLimit
 	result.RateRemaining = policy.RateLimit - current - 1
+	result.RateLimitWindow = policy.RateLimitWindow
 
 	// 检查请求数配额
 	today := time.Now()

@@ -175,6 +175,9 @@ func (p *Proxy) ExecuteCoreWorkflow(
 		return
 	}
 
+	// CheckQuota 只是校验限额，这里需要真实累加内存中的 rate limit 计数器，否则速率限制永远为 0
+	_ = p.quotaService.IncrementRate(req.UserID, quotaResult.RateLimitWindow)
+
 	// 选择后端
 	backend, ok := p.lb.Next(req.ModelID, p.defaultModel)
 	if !ok {

@@ -34,6 +34,7 @@ type QuotaCheckResult struct {
 	DailyRequestLimit int    `json:"daily_request_limit"`
 	RateRemaining     int    `json:"rate_remaining"`
 	RateLimit         int    `json:"rate_limit"`
+	RateLimitWindow   int    `json:"rate_limit_window"`
 }
 
 type UsageStats struct {
