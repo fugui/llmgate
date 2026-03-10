@@ -167,6 +167,16 @@ func (p *Proxy) ExecuteCoreWorkflow(
 		return
 	}
 
+	// 当指定的模型不被允许时，降级使用默认模型重试
+	if !quotaResult.Allowed && quotaResult.Reason == "model not allowed" && p.defaultModel != "" {
+		req.ModelID = p.defaultModel
+		quotaResult, err = p.quotaService.CheckQuota(req.UserID, user.QuotaPolicy, req.ModelID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "quota check failed"})
+			return
+		}
+	}
+
 	if !quotaResult.Allowed {
 		c.JSON(http.StatusTooManyRequests, gin.H{
 			"error": quotaResult.Reason,
