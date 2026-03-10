@@ -237,11 +237,12 @@ func (cm *ConfigManager) deepCopyConfig(cfg *Config) *Config {
 // deepCopyModel 深拷贝模型配置
 func (cm *ConfigManager) deepCopyModel(m ModelConfig) ModelConfig {
 	copy := ModelConfig{
-		ID:          m.ID,
-		Name:        m.Name,
-		Description: m.Description,
-		Enabled:     m.Enabled,
-		ModelParams: make(map[string]interface{}),
+		ID:            m.ID,
+		Name:          m.Name,
+		Description:   m.Description,
+		Enabled:       m.Enabled,
+		ContextWindow: m.ContextWindow,
+		ModelParams:   make(map[string]interface{}),
 	}
 
 	// 深拷贝 ModelParams
