@@ -401,6 +401,9 @@ func (h *PolicyHandler) UpdatePolicy(c *gin.Context) {
 	if req.Description != "" {
 		policy.Description = req.Description
 	}
+	
+	// Allow updating default model (including clearing it if req.DefaultModel is empty)
+	policy.DefaultModel = req.DefaultModel
 
 	if err := h.quotaStore.CreateOrUpdatePolicy(policy); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
