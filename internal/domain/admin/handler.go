@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,24 @@ import (
 	"modelgate/internal/infra/middleware"
 	"modelgate/internal/repository"
 )
+
+// validIDPattern defines the allowed characters for resource IDs (model ID, backend ID, etc.).
+// Only alphanumeric characters, hyphens, and underscores are permitted.
+var validIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// validateResourceID checks whether the given ID is safe to use in URL path segments.
+func validateResourceID(id, label string) error {
+	if id == "" {
+		return fmt.Errorf("%s 不能为空", label)
+	}
+	if len(id) > 128 {
+		return fmt.Errorf("%s 长度不能超过 128 个字符", label)
+	}
+	if !validIDPattern.MatchString(id) {
+		return fmt.Errorf("%s 仅允许使用字母、数字、连字符(-)和下划线(_)，且必须以字母或数字开头", label)
+	}
+	return nil
+}
 
 type LoadBalancer interface {
 	GetHealthStatus() map[string]proxy.BackendHealth
@@ -81,6 +100,12 @@ func (h *ModelHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Validate model ID
+	if err := validateResourceID(req.ID, "模型ID"); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	model := &entity.Model{
 		ID:            req.ID,
 		Name:          req.Name,
@@ -98,6 +123,10 @@ func (h *ModelHandler) Create(c *gin.Context) {
 	for _, backendInput := range req.Backends {
 		if backendInput.ID == "" {
 			continue
+		}
+		if err := validateResourceID(backendInput.ID, "后端ID"); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 		backend := &entity.Backend{
 			ID:        backendInput.ID,
@@ -220,6 +249,12 @@ func (h *ModelHandler) CreateBackend(c *gin.Context) {
 
 	var req entity.BackendCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate backend ID
+	if err := validateResourceID(req.ID, "后端ID"); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

@@ -312,7 +312,14 @@ const BackendManage: React.FC = () => {
           <Form.Item
             name="id"
             label="后端ID"
-            rules={[{ required: true, message: '请输入后端ID' }]}
+            rules={[
+              { required: true, message: '请输入后端ID' },
+              { max: 128, message: '后端ID长度不能超过128个字符' },
+              {
+                pattern: /^[a-zA-Z0-9][a-zA-Z0-9_\-]*$/,
+                message: '仅允许字母、数字、连字符(-)和下划线(_)，且必须以字母或数字开头',
+              },
+            ]}
             extra="唯一标识，如：backend-1, aws-us-east-1"
           >
             <Input disabled={!!editingBackend} placeholder="如：backend-1" />
