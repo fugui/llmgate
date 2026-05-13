@@ -3,8 +3,9 @@ import {
   Row,
   Col,
   Card,
-
-
+  Select,
+  Space,
+  Switch,
   Empty,
   message,
 } from 'antd';
@@ -80,6 +81,8 @@ interface DashboardData {
 const DashboardStats: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [selectedBackends, setSelectedBackends] = useState<string[]>([]);
+  const [showLatency, setShowLatency] = useState<boolean>(true);
 
   const fetchStats = async () => {
     try {
@@ -172,6 +175,7 @@ const DashboardStats: React.FC = () => {
   }
 
   const { summary, hourly_stats: hourlyStats, top_users: topUsers, metrics_history: metricsHistory, backend_metrics: backendMetrics, backend_ids: backendIds } = data;
+  const visibleBackends = selectedBackends.length > 0 ? selectedBackends : backendIds;
 
   const uniqueModels = Array.from(
     new Set(hourlyStats.flatMap((stat) => (stat.models ? Object.keys(stat.models) : [])))
@@ -369,7 +373,27 @@ const DashboardStats: React.FC = () => {
       {backendMetrics.length > 0 && (
         <Row gutter={16} style={{ marginBottom: 24 }}>
           <Col xs={24}>
-            <Card title="后端请求数 & 平均时延对比（最近24小时，5分钟粒度）">
+            <Card 
+              title="后端请求数 & 平均时延对比（最近24小时，5分钟粒度）"
+              extra={
+                <Space>
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    placeholder="选择模型展示（默认全部）"
+                    style={{ minWidth: 200, maxWidth: 400 }}
+                    value={selectedBackends}
+                    onChange={setSelectedBackends}
+                    maxTagCount="responsive"
+                  >
+                    {backendIds.map(id => (
+                      <Select.Option key={id} value={id}>{id}</Select.Option>
+                    ))}
+                  </Select>
+                  <Switch checked={showLatency} onChange={setShowLatency} checkedChildren="时延" unCheckedChildren="时延" />
+                </Space>
+              }
+            >
               <ResponsiveContainer width="100%" height={300}>
                 <ComposedChart data={backendMetrics}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -384,45 +408,53 @@ const DashboardStats: React.FC = () => {
                     stroke="#1890ff"
                     label={{ value: '请求数', angle: -90, position: 'insideLeft', offset: 10 }}
                   />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    stroke="#fa8c16"
-                    label={{ value: '时延(ms)', angle: 90, position: 'insideRight', offset: 10 }}
-                  />
+                  {showLatency && (
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke="#fa8c16"
+                      label={{ value: '时延(ms)', angle: 90, position: 'insideRight', offset: 10 }}
+                    />
+                  )}
                   <Tooltip
                     formatter={(value: any, name: any) => {
-                      if (name.endsWith('(请求)')) return [`${value ?? 0}`, name];
                       if (name.endsWith('(时延)')) return [value != null ? `${value} ms` : '-', name];
-                      return [value, name];
+                      return [`${value ?? 0}`, `${name} (请求)`];
                     }}
                     labelFormatter={(label: any) => `时间: ${label}`}
                   />
                   <Legend />
-                  {backendIds.map((id, index) => (
-                    <Bar
-                      key={`${id}_requests`}
-                      yAxisId="left"
-                      dataKey={`${id}_requests`}
-                      fill={chartColors[index % chartColors.length]}
-                      fillOpacity={0.4}
-                      name={`${id} (请求)`}
-                      stackId="requests"
-                    />
-                  ))}
-                  {backendIds.map((id, index) => (
-                    <Line
-                      key={`${id}_latency`}
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey={`${id}_latency`}
-                      stroke={chartColors[index % chartColors.length]}
-                      name={`${id} (时延)`}
-                      dot={false}
-                      strokeWidth={2}
-                      connectNulls
-                    />
-                  ))}
+                  {visibleBackends.map((id, index) => {
+                    const colorIndex = backendIds.indexOf(id);
+                    return (
+                      <Bar
+                        key={`${id}_requests`}
+                        yAxisId="left"
+                        dataKey={`${id}_requests`}
+                        fill={chartColors[colorIndex % chartColors.length]}
+                        fillOpacity={0.4}
+                        name={id}
+                        stackId="requests"
+                      />
+                    );
+                  })}
+                  {showLatency && visibleBackends.map((id, index) => {
+                    const colorIndex = backendIds.indexOf(id);
+                    return (
+                      <Line
+                        key={`${id}_latency`}
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey={`${id}_latency`}
+                        stroke={chartColors[colorIndex % chartColors.length]}
+                        name={`${id} (时延)`}
+                        dot={false}
+                        strokeWidth={2}
+                        connectNulls
+                        legendType="none"
+                      />
+                    );
+                  })}
                 </ComposedChart>
               </ResponsiveContainer>
             </Card>
