@@ -192,6 +192,16 @@ const DashboardStats: React.FC = () => {
     return num.toString();
   };
 
+  const formatLatency = (ms: number | null | undefined) => {
+    if (ms == null) return '-';
+    if (ms < 1000) return `${Math.round(ms)} ms`;
+    const seconds = ms / 1000;
+    if (seconds < 60) return `${seconds.toFixed(2)} s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    return `${minutes}m ${remainingSeconds}s`;
+  };
+
   const renderTokens = (_: any, record: any) => (
     <span>
       <span style={{ color: '#fa8c16' }}>↑{formatTokens(record.input_tokens || 0)}</span>
@@ -335,7 +345,7 @@ const DashboardStats: React.FC = () => {
                   <Tooltip
                     formatter={(value: any, name: any) => {
                       if (name === '并发数') return [`${value ?? 0}`, '并发数'];
-                      if (name === '平均时延') return [`${value ?? 0} ms`, '平均时延'];
+                      if (name === '平均时延') return [formatLatency(value as number), '平均时延'];
                       return [value, name];
                     }}
                     labelFormatter={(label: any) => `时间: ${label}`}
@@ -417,14 +427,54 @@ const DashboardStats: React.FC = () => {
                     />
                   )}
                   <Tooltip
-                    formatter={(value: any, name: any) => {
-                      if (name.endsWith('(时延)')) return [value != null ? `${value} ms` : '-', name];
-                      return [`${value ?? 0}`, `${name} (请求)`];
+                    content={(props: any) => {
+                      const { active, payload, label } = props;
+                      if (!active || !payload || !payload.length) return null;
+
+                      const models = new Map<string, { requests?: number; latency?: number; color: string }>();
+
+                      payload.forEach((item: any) => {
+                        let id = item.name;
+                        let isLatency = false;
+                        if (typeof item.name === 'string' && item.name.endsWith(' (时延)')) {
+                           id = item.name.replace(' (时延)', '');
+                           isLatency = true;
+                        }
+
+                        if (!models.has(id)) {
+                          models.set(id, { color: item.color });
+                        }
+                        const modelData = models.get(id)!;
+                        if (isLatency) {
+                          modelData.latency = item.value;
+                        } else {
+                          modelData.requests = item.value;
+                        }
+                      });
+
+                      return (
+                        <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #d9d9d9', padding: '10px', borderRadius: '4px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)' }}>
+                          <p style={{ margin: 0, fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>时间: {label}</p>
+                          {Array.from(models.entries()).map(([id, data]) => (
+                            <div key={id} style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '13px' }}>
+                              <span style={{ display: 'inline-block', minWidth: '8px', height: '8px', backgroundColor: data.color, borderRadius: '50%', marginRight: '8px' }}></span>
+                              <span style={{ color: '#555', marginRight: '8px', fontWeight: 500 }}>{id}:</span>
+                              <span style={{ color: '#333' }}>
+                                {data.requests ?? 0} 请求
+                                {showLatency && data.latency != null && (
+                                  <span style={{ color: '#888', marginLeft: '4px' }}>
+                                    ({formatLatency(data.latency)})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
                     }}
-                    labelFormatter={(label: any) => `时间: ${label}`}
                   />
                   <Legend />
-                  {visibleBackends.map((id, index) => {
+                  {visibleBackends.map((id) => {
                     const colorIndex = backendIds.indexOf(id);
                     return (
                       <Bar
@@ -438,7 +488,7 @@ const DashboardStats: React.FC = () => {
                       />
                     );
                   })}
-                  {showLatency && visibleBackends.map((id, index) => {
+                  {showLatency && visibleBackends.map((id) => {
                     const colorIndex = backendIds.indexOf(id);
                     return (
                       <Line
