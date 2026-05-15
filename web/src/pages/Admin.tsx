@@ -28,6 +28,7 @@ interface Backend {
   region: string;
   enabled: boolean;
   healthy: boolean;
+  max_concurrency: number;
   last_check_at: string;
   created_at: string;
   updated_at: string;
@@ -41,6 +42,8 @@ interface BackendHealth {
   last_check: string;
   fail_count: number;
   latency_ms: number;
+  max_concurrency?: number;
+  active_concurrency?: number;
 }
 
 interface User {
@@ -90,6 +93,7 @@ interface BackendFormValues {
   weight: number;
   region: string;
   enabled: boolean;
+  max_concurrency: number;
 }
 
 interface UserFormValues {
@@ -201,7 +205,7 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleConcurrencyConfigSubmit = async (values: { global_limit: number; user_limit: number }) => {
+  const handleConcurrencyConfigSubmit = async (values: { user_limit: number }) => {
     try {
       await api.put('/api/v1/admin/config/concurrency', values);
       messageApi.success('并发配置保存成功，已动态生效');
@@ -481,7 +485,7 @@ const Admin: React.FC = () => {
     setEditingBackend(null);
     setBackendModalTitle('创建后端');
     backendForm.resetFields();
-    backendForm.setFieldsValue({ id: generateBackendId(), weight: 1, enabled: true });
+    backendForm.setFieldsValue({ id: generateBackendId(), weight: 1, enabled: true, max_concurrency: 0 });
     setBackendModalVisible(true);
   };
 
@@ -496,6 +500,7 @@ const Admin: React.FC = () => {
       weight: backend.weight,
       region: backend.region,
       enabled: backend.enabled,
+      max_concurrency: backend.max_concurrency ?? 0,
     });
     setBackendModalVisible(true);
   };
@@ -927,6 +932,12 @@ const Admin: React.FC = () => {
       render: (weight: number) => <Tag color="blue">{weight}</Tag>,
     },
     {
+      title: '最大并发',
+      dataIndex: 'max_concurrency',
+      key: 'max_concurrency',
+      render: (val: number) => val > 0 ? <Tag color="orange">{val}</Tag> : <Tag>不限制</Tag>,
+    },
+    {
       title: 'Region',
       dataIndex: 'region',
       key: 'region',
@@ -1054,6 +1065,22 @@ const Admin: React.FC = () => {
         const health = healthStatus[record.id];
         if (!health || health.latency_ms === 0) return '-';
         return `${health.latency_ms}ms`;
+      },
+    },
+    {
+      title: '并发',
+      key: 'concurrency',
+      render: (_: unknown, record: Backend) => {
+        const health = healthStatus[record.id];
+        if (!health) return '-';
+        const active = health.active_concurrency ?? 0;
+        const max = health.max_concurrency ?? 0;
+        if (max > 0) {
+          const ratio = active / max;
+          const color = ratio >= 0.9 ? 'red' : ratio >= 0.7 ? 'orange' : 'green';
+          return <Tag color={color}>{active}/{max}</Tag>;
+        }
+        return active > 0 ? <Tag color="blue">{active}</Tag> : '-';
       },
     },
     {
@@ -1281,14 +1308,6 @@ const Admin: React.FC = () => {
                     onFinish={handleConcurrencyConfigSubmit}
                   >
                     <Form.Item
-                      name="global_limit"
-                      label="全局并发限制"
-                      rules={[{ required: true, message: '请输入全局并发限制' }]}
-                      extra="全局最大并发请求数，0 表示不限制"
-                    >
-                      <InputNumber min={0} max={10000} style={{ width: '100%' }} placeholder="如：100" />
-                    </Form.Item>
-                    <Form.Item
                       name="user_limit"
                       label="用户并发限制"
                       rules={[{ required: true, message: '请输入用户并发限制' }]}
@@ -1488,6 +1507,14 @@ const Admin: React.FC = () => {
             extra="负载均衡权重，数值越大分配越多请求（默认1）"
           >
             <InputNumber min={1} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="max_concurrency"
+            label="最大并发"
+            extra="该后端最大并发请求数，0 表示不限制（根据后端服务器承载能力设置）"
+          >
+            <InputNumber min={0} max={10000} style={{ width: '100%' }} placeholder="如：5（0=不限制）" />
           </Form.Item>
 
           <Form.Item

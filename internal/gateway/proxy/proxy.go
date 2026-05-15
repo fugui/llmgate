@@ -124,19 +124,22 @@ func (p *Proxy) ExecuteCoreWorkflow(
 		return
 	}
 
-	// 2. 选择后端
+	// 2. 选择后端（内部已获取并发许可）
 	backend := p.selectBackend(pctx)
 	if backend == nil {
 		return
 	}
 
-	// 3. 准备并发送请求
+	// 3. 确保请求完成后释放并发许可（包括 streaming 完成、错误、客户端断开等任何情况）
+	defer p.lb.ReleaseBackend(pctx.BackendID)
+
+	// 4. 准备并发送请求
 	resp := p.prepareAndSendRequest(pctx, backend)
 	if resp == nil {
 		return
 	}
 
-	// 4. 处理响应
+	// 5. 处理响应
 	p.dispatchResponse(pctx, resp)
 }
 
@@ -192,10 +195,13 @@ func (p *Proxy) selectBackend(pctx *ProxyContext) *Backend {
 
 	backend, actualModelID, ok := p.lb.Next(req.ModelID, pctx.DefaultModel)
 	if !ok {
-		pctx.RecordErrorUsage(http.StatusServiceUnavailable, "no backend available")
-		pctx.SendError(http.StatusServiceUnavailable, "api_error", "no backend available for model: "+req.ModelID)
+		pctx.RecordErrorUsage(http.StatusTooManyRequests, "all backends at concurrency capacity")
+		pctx.SendError(http.StatusTooManyRequests, "rate_limit_error", "all backends for model "+req.ModelID+" are at concurrency capacity, please retry later")
 		return nil
 	}
+
+	// 原子递增后端并发计数（Next() 已检查容量，这里确保计数准确）
+	p.lb.AcquireBackend(backend.ID)
 
 	req.ModelID = actualModelID
 	pctx.GinCtx.Set("model_id", actualModelID)

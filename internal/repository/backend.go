@@ -9,37 +9,40 @@ import (
 
 // Backend represents a backend instance for a model
 type Backend struct {
-	ID           string       `json:"id"`
-	ModelID      string       `json:"model_id"`
-	BaseURL      string       `json:"base_url"`
-	APIKey       string       `json:"-"`       // Never return API key in JSON
-	APIKeyMasked string       `json:"api_key"` // Masked version for display
-	ModelName    string       `json:"model_name"`
-	Weight       int          `json:"weight"`
-	Enabled      bool         `json:"enabled"`
-	Healthy      bool         `json:"healthy"`
-	LastCheckAt  sql.NullTime `json:"last_check_at"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
+	ID             string       `json:"id"`
+	ModelID        string       `json:"model_id"`
+	BaseURL        string       `json:"base_url"`
+	APIKey         string       `json:"-"`       // Never return API key in JSON
+	APIKeyMasked   string       `json:"api_key"` // Masked version for display
+	ModelName      string       `json:"model_name"`
+	Weight         int          `json:"weight"`
+	Enabled        bool         `json:"enabled"`
+	Healthy        bool         `json:"healthy"`
+	MaxConcurrency int          `json:"max_concurrency"` // 该后端最大并发数，0 表示不限制
+	LastCheckAt    sql.NullTime `json:"last_check_at"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
 }
 
 // BackendCreateRequest represents a request to create a backend
 type BackendCreateRequest struct {
-	ID        string `json:"id" binding:"required"`
-	BaseURL   string `json:"base_url" binding:"required,url"`
-	APIKey    string `json:"api_key"`
-	ModelName string `json:"model_name"`
-	Weight    int    `json:"weight"`
-	Enabled   bool   `json:"enabled"`
+	ID             string `json:"id" binding:"required"`
+	BaseURL        string `json:"base_url" binding:"required,url"`
+	APIKey         string `json:"api_key"`
+	ModelName      string `json:"model_name"`
+	Weight         int    `json:"weight"`
+	Enabled        bool   `json:"enabled"`
+	MaxConcurrency int    `json:"max_concurrency"`
 }
 
 // BackendUpdateRequest represents a request to update a backend
 type BackendUpdateRequest struct {
-	BaseURL   string `json:"base_url" binding:"omitempty,url"`
-	APIKey    string `json:"api_key"`
-	ModelName string `json:"model_name"`
-	Weight    int    `json:"weight"`
-	Enabled   *bool  `json:"enabled"`
+	BaseURL        string `json:"base_url" binding:"omitempty,url"`
+	APIKey         string `json:"api_key"`
+	ModelName      string `json:"model_name"`
+	Weight         int    `json:"weight"`
+	Enabled        *bool  `json:"enabled"`
+	MaxConcurrency int    `json:"max_concurrency"`
 }
 
 // BackendStore handles backend configuration - now from ConfigManager
@@ -63,29 +66,31 @@ func (s *BackendStore) configToBackend(modelID string, cfg config.BackendConfig)
 		}
 	}
 	return &Backend{
-		ID:           cfg.ID,
-		ModelID:      modelID,
-		BaseURL:      cfg.BaseURL,
-		APIKey:       cfg.APIKey,
-		APIKeyMasked: masked,
-		ModelName:    cfg.ModelName,
-		Weight:       cfg.Weight,
-		Enabled:      cfg.Enabled,
-		Healthy:      true,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:             cfg.ID,
+		ModelID:        modelID,
+		BaseURL:        cfg.BaseURL,
+		APIKey:         cfg.APIKey,
+		APIKeyMasked:   masked,
+		ModelName:      cfg.ModelName,
+		Weight:         cfg.Weight,
+		Enabled:        cfg.Enabled,
+		Healthy:        true,
+		MaxConcurrency: cfg.MaxConcurrency,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 }
 
 // backendToConfig 将数据后端转换为配置后端
 func (s *BackendStore) backendToConfig(backend *Backend) config.BackendConfig {
 	return config.BackendConfig{
-		ID:        backend.ID,
-		BaseURL:   backend.BaseURL,
-		APIKey:    backend.APIKey,
-		ModelName: backend.ModelName,
-		Weight:    backend.Weight,
-		Enabled:   backend.Enabled,
+		ID:             backend.ID,
+		BaseURL:        backend.BaseURL,
+		APIKey:         backend.APIKey,
+		ModelName:      backend.ModelName,
+		Weight:         backend.Weight,
+		Enabled:        backend.Enabled,
+		MaxConcurrency: backend.MaxConcurrency,
 	}
 }
 

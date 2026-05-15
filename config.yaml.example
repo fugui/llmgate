@@ -36,6 +36,7 @@ models:
         api_key: "your-glm-api-key-here"
         model_name: "glm4"    # 后端实际模型名称
         weight: 10            # 负载均衡权重
+        max_concurrency: 0    # 最大并发请求数，0 表示不限制
         region: "beijing"
         enabled: true
 
@@ -58,6 +59,7 @@ models:
         api_key: "your-kimi-api-key-here"
         model_name: "kimi2.5"
         weight: 20
+        max_concurrency: 5    # 最大并发请求数，0 表示不限制（根据 LLM 服务器承载能力设置）
         region: "guangzhou"
         enabled: true
       - id: "kimi2.5-bj-01"
@@ -66,6 +68,7 @@ models:
         api_key: "your-kimi-api-key-here"
         model_name: "kimi2.5"
         weight: 15
+        max_concurrency: 5
         region: "beijing"
         enabled: true
 
@@ -125,8 +128,8 @@ logs:
 
 # 并发控制配置
 concurrency:
-  global_limit: 100         # 全局最大并发请求数，0 表示不限制
   user_limit: 10            # 每个用户最大并发请求数，0 表示不限制
+  # 说明：per-backend 并发限制在各后端的 max_concurrency 字段中配置
 
 # 前端配置
 frontend:

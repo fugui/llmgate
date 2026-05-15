@@ -23,13 +23,15 @@ type LoadBalancer interface {
 
 // BackendHealth 后端健康状态
 type BackendHealth struct {
-	BackendID string    `json:"backend_id"`
-	URL       string    `json:"url"`
-	ModelName string    `json:"model_name"`
-	Healthy   bool      `json:"healthy"`
-	LastCheck time.Time `json:"last_check"`
-	FailCount int       `json:"fail_count"`
-	Latency   int64     `json:"latency_ms"`
+	BackendID         string    `json:"backend_id"`
+	URL               string    `json:"url"`
+	ModelName         string    `json:"model_name"`
+	Healthy           bool      `json:"healthy"`
+	LastCheck         time.Time `json:"last_check"`
+	FailCount         int       `json:"fail_count"`
+	Latency           int64     `json:"latency_ms"`
+	MaxConcurrency    int       `json:"max_concurrency"`    // 最大并发限制 (0=不限制)
+	ActiveConcurrency int32     `json:"active_concurrency"` // 当前活跃并发数（atomic）
 }
 
 // RoundRobinBalancer 轮询负载均衡器
@@ -43,11 +45,12 @@ type RoundRobinBalancer struct {
 
 // Backend represents a backend instance with metadata
 type Backend struct {
-	ID        string
-	URL       string
-	Weight    int
-	ModelName string // The actual model name used by the backend
-	APIKey    string // API key for backend authentication
+	ID             string
+	URL            string
+	Weight         int
+	ModelName      string // The actual model name used by the backend
+	APIKey         string // API key for backend authentication
+	MaxConcurrency int    // 最大并发请求数，0 表示不限制
 }
 
 func NewRoundRobinBalancer() *RoundRobinBalancer {
@@ -109,29 +112,67 @@ func (lb *RoundRobinBalancer) tryGetBackend(lookupModel string, requestedModel s
 		return nil, requestedModel, false
 	}
 
-	// 找到健康的后端
 	counter := lb.counters[lookupModel]
 	attempts := len(backends)
-	healthyCount := 0
 
+	// 尝试找到健康且未满载的后端
 	for i := 0; i < attempts; i++ {
 		idx := atomic.AddUint32(counter, 1) % uint32(len(backends))
 		backend := backends[idx]
 
-		if health, ok := lb.health[backend.ID]; ok && health.Healthy {
-			healthyCount++
-			if lookupModel != requestedModel {
-				logger.Infof("Next: using fallback model %s for request model %s (backend: %s)", lookupModel, requestedModel, backend.ID)
-			}
-			return &backend, lookupModel, true
+		health, ok := lb.health[backend.ID]
+		if !ok || !health.Healthy {
+			continue
 		}
+
+		// 检查 per-backend 并发限制
+		if health.MaxConcurrency > 0 {
+			current := atomic.LoadInt32(&health.ActiveConcurrency)
+			if current >= int32(health.MaxConcurrency) {
+				logger.Infof("tryGetBackend: backend %s is at capacity (%d/%d), skipping", backend.ID, current, health.MaxConcurrency)
+				continue
+			}
+		}
+
+		// 原剀引用就是 OK 的，可以使用
+		if lookupModel != requestedModel {
+			logger.Infof("tryGetBackend: using fallback model %s for request model %s (backend: %s)", lookupModel, requestedModel, backend.ID)
+		}
+		return &backend, lookupModel, true
 	}
 
-	// 所有后端都不健康，返回第一个（降级）
+	// 所有后端都不健康或满载
+	// 如果所有健康后端都满载，返回 false
+	allBusy := true
+	for i := 0; i < len(backends); i++ {
+		health, ok := lb.health[backends[i].ID]
+		if !ok || !health.Healthy {
+			continue
+		}
+		// 存在健康的后端但都满载
+		if health.MaxConcurrency > 0 {
+			allBusy = true
+			break
+		}
+		// 存在健康且不限制并发的后端，说明没满载
+		allBusy = false
+		break
+	}
+
+	if allBusy {
+		if lookupModel != requestedModel {
+			logger.Infof("tryGetBackend: all backends for fallback model %s are at capacity", lookupModel)
+		} else {
+			logger.Infof("tryGetBackend: all backends for model %s are at capacity", lookupModel)
+		}
+		return nil, requestedModel, false
+	}
+
+	// 所有后端都不健康，降级使用第一个
 	if lookupModel != requestedModel {
-		logger.Infof("Next: all %d backends for fallback model %s are unhealthy, using first backend", len(backends), lookupModel)
+		logger.Infof("tryGetBackend: all %d backends for fallback model %s are unhealthy, using first backend", len(backends), lookupModel)
 	} else {
-		logger.Infof("Next: all %d backends for model %s are unhealthy, using first backend", len(backends), lookupModel)
+		logger.Infof("tryGetBackend: all %d backends for model %s are unhealthy, using first backend", len(backends), lookupModel)
 	}
 	return &backends[0], lookupModel, true
 }
@@ -153,6 +194,56 @@ func (lb *RoundRobinBalancer) MarkSuccess(backendID string) {
 	if health, exists := lb.health[backendID]; exists {
 		health.Healthy = true
 		health.FailCount = 0
+	}
+}
+
+// AcquireBackend 尝试获取指定后端的并发许可（原子递增）
+// 返回 false 表示该后端并发已达上限
+func (lb *RoundRobinBalancer) AcquireBackend(backendID string) bool {
+	lb.mu.RLock()
+	health, exists := lb.health[backendID]
+	lb.mu.RUnlock()
+
+	if !exists {
+		return true // 未知后端不限制
+	}
+
+	if health.MaxConcurrency <= 0 {
+		// 不限制，只计数
+		atomic.AddInt32(&health.ActiveConcurrency, 1)
+		return true
+	}
+
+	// CAS 循环尝试递增，确保不超限
+	for {
+		current := atomic.LoadInt32(&health.ActiveConcurrency)
+		if current >= int32(health.MaxConcurrency) {
+			return false
+		}
+		if atomic.CompareAndSwapInt32(&health.ActiveConcurrency, current, current+1) {
+			return true
+		}
+	}
+}
+
+// ReleaseBackend 释放指定后端的并发许可（原子递减）
+func (lb *RoundRobinBalancer) ReleaseBackend(backendID string) {
+	lb.mu.RLock()
+	health, exists := lb.health[backendID]
+	lb.mu.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	for {
+		current := atomic.LoadInt32(&health.ActiveConcurrency)
+		if current <= 0 {
+			return
+		}
+		if atomic.CompareAndSwapInt32(&health.ActiveConcurrency, current, current-1) {
+			return
+		}
 	}
 }
 
@@ -178,13 +269,15 @@ func (lb *RoundRobinBalancer) GetHealthStatus() map[string]BackendHealth {
 	status := make(map[string]BackendHealth)
 	for id, health := range lb.health {
 		status[id] = BackendHealth{
-			BackendID: health.BackendID,
-			URL:       health.URL,
-			ModelName: health.ModelName,
-			Healthy:   health.Healthy,
-			LastCheck: health.LastCheck,
-			FailCount: health.FailCount,
-			Latency:   health.Latency,
+			BackendID:         health.BackendID,
+			URL:               health.URL,
+			ModelName:         health.ModelName,
+			Healthy:           health.Healthy,
+			LastCheck:         health.LastCheck,
+			FailCount:         health.FailCount,
+			Latency:           health.Latency,
+			MaxConcurrency:    health.MaxConcurrency,
+			ActiveConcurrency: atomic.LoadInt32(&health.ActiveConcurrency),
 		}
 	}
 	return status
@@ -290,13 +383,15 @@ func (lb *RoundRobinBalancer) GetModelBackends(modelID string) []BackendHealth {
 	for _, backend := range lb.backends[modelID] {
 		if health, exists := lb.health[backend.ID]; exists {
 			result = append(result, BackendHealth{
-				BackendID: health.BackendID,
-				URL:       health.URL,
-				ModelName: health.ModelName,
-				Healthy:   health.Healthy,
-				LastCheck: health.LastCheck,
-				FailCount: health.FailCount,
-				Latency:   health.Latency,
+				BackendID:         health.BackendID,
+				URL:               health.URL,
+				ModelName:         health.ModelName,
+				Healthy:           health.Healthy,
+				LastCheck:         health.LastCheck,
+				FailCount:         health.FailCount,
+				Latency:           health.Latency,
+				MaxConcurrency:    health.MaxConcurrency,
+				ActiveConcurrency: atomic.LoadInt32(&health.ActiveConcurrency),
 			})
 		}
 	}
@@ -357,11 +452,12 @@ func (lb *RoundRobinBalancer) ReloadConfig(models []config.ModelConfig) {
 			}
 
 			backend := Backend{
-				ID:        backendConfig.ID,
-				URL:       backendConfig.BaseURL,
-				Weight:    backendConfig.Weight,
-				ModelName: backendConfig.ModelName,
-				APIKey:    backendConfig.APIKey,
+				ID:             backendConfig.ID,
+				URL:            backendConfig.BaseURL,
+				Weight:         backendConfig.Weight,
+				ModelName:      backendConfig.ModelName,
+				APIKey:         backendConfig.APIKey,
+				MaxConcurrency: backendConfig.MaxConcurrency,
 			}
 
 			if backend.Weight == 0 {
@@ -374,16 +470,18 @@ func (lb *RoundRobinBalancer) ReloadConfig(models []config.ModelConfig) {
 			// 4. 保留现有健康状态或初始化新的
 			if _, exists := lb.health[backend.ID]; !exists {
 				lb.health[backend.ID] = &BackendHealth{
-					BackendID: backend.ID,
-					URL:       backend.URL,
-					ModelName: backend.ModelName,
-					Healthy:   true,
-					LastCheck: time.Now(),
+					BackendID:      backend.ID,
+					URL:            backend.URL,
+					ModelName:      backend.ModelName,
+					Healthy:        true,
+					LastCheck:      time.Now(),
+					MaxConcurrency: backend.MaxConcurrency,
 				}
 			} else {
-				// 更新URL和ModelName（可能已更改）
+				// 更新URL、ModelName和MaxConcurrency（可能已更改）
 				lb.health[backend.ID].URL = backend.URL
 				lb.health[backend.ID].ModelName = backend.ModelName
+				lb.health[backend.ID].MaxConcurrency = backend.MaxConcurrency
 			}
 		}
 

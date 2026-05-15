@@ -518,8 +518,7 @@ func (h *Handler) GetConcurrencyConfig(c *gin.Context) {
 	concurrency := h.cm.GetConcurrency()
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"global_limit": concurrency.GlobalLimit,
-			"user_limit":   concurrency.UserLimit,
+			"user_limit": concurrency.UserLimit,
 		},
 	})
 }
@@ -527,22 +526,20 @@ func (h *Handler) GetConcurrencyConfig(c *gin.Context) {
 // UpdateConcurrencyConfig 更新并发控制配置 (Admin API)
 func (h *Handler) UpdateConcurrencyConfig(c *gin.Context) {
 	var req struct {
-		GlobalLimit int `json:"global_limit"`
-		UserLimit   int `json:"user_limit"`
+		UserLimit int `json:"user_limit"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if req.GlobalLimit < 0 || req.UserLimit < 0 {
+	if req.UserLimit < 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "limit values cannot be negative"})
 		return
 	}
 
 	if err := h.cm.UpdateConcurrency(config.ConcurrencyConfig{
-		GlobalLimit: req.GlobalLimit,
-		UserLimit:   req.UserLimit,
+		UserLimit: req.UserLimit,
 	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save configuration: " + err.Error()})
 		return

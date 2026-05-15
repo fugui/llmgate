@@ -101,7 +101,6 @@ CREATE TABLE quota_usage_daily (
 				Backends: []config.BackendConfig{
 					{
 						ID:        "backend-1",
-						Name:      "Test Backend",
 						BaseURL:   "http://localhost:8080",
 						ModelName: "gpt-4",
 						Weight:    1,

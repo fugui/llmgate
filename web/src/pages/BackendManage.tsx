@@ -12,6 +12,7 @@ interface Backend {
   weight: number;
   enabled: boolean;
   healthy: boolean;
+  max_concurrency: number;
   last_check_at: string;
   created_at: string;
   updated_at: string;
@@ -31,6 +32,7 @@ interface BackendFormValues {
   api_key: string;
   weight: number;
   enabled: boolean;
+  max_concurrency: number;
 }
 
 const BackendManage: React.FC = () => {
@@ -97,7 +99,7 @@ const BackendManage: React.FC = () => {
     setEditingBackend(null);
     setBackendModalTitle('创建后端');
     backendForm.resetFields();
-    backendForm.setFieldsValue({ id: generateBackendId(), weight: 1, enabled: true });
+    backendForm.setFieldsValue({ id: generateBackendId(), weight: 1, enabled: true, max_concurrency: 0 });
     setBackendModalVisible(true);
   };
 
@@ -110,6 +112,7 @@ const BackendManage: React.FC = () => {
       model_name: backend.model_name,
       weight: backend.weight,
       enabled: backend.enabled,
+      max_concurrency: backend.max_concurrency ?? 0,
     });
     setBackendModalVisible(true);
   };
@@ -174,6 +177,12 @@ const BackendManage: React.FC = () => {
       dataIndex: 'weight',
       key: 'weight',
       render: (weight: number) => <Tag color="blue">{weight}</Tag>,
+    },
+    {
+      title: '最大并发',
+      dataIndex: 'max_concurrency',
+      key: 'max_concurrency',
+      render: (val: number) => val > 0 ? <Tag color="orange">{val}</Tag> : <Tag>不限制</Tag>,
     },
     {
       title: '健康状态',
@@ -361,6 +370,14 @@ const BackendManage: React.FC = () => {
             extra="负载均衡权重，数值越大分配越多请求（默认1）"
           >
             <InputNumber min={1} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="max_concurrency"
+            label="最大并发"
+            extra="该后端最大并发请求数，0 表示不限制（根据后端服务器承载能力设置）"
+          >
+            <InputNumber min={0} max={10000} style={{ width: '100%' }} placeholder="如：5（0=不限制）" />
           </Form.Item>
 
           <Form.Item

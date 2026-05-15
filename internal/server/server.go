@@ -127,7 +127,7 @@ func (s *Server) initInfrastructure() error {
 	s.userLogger = logger.NewUserLogger(s.cfg.Logs.Path, s.cfg.Logs.RetentionDays, s.cfg.Logs.LogPayloads)
 	s.localCache = cache.New()
 	s.jwtManager = auth.NewJWTManager(s.cfg.JWT.Secret, s.cfg.JWT.ExpireHours)
-	s.limiter = concurrency.NewLimiter(s.cfg.Concurrency.GlobalLimit, s.cfg.Concurrency.UserLimit)
+	s.limiter = concurrency.NewLimiter(s.cfg.Concurrency.UserLimit)
 
 	return nil
 }
@@ -235,14 +235,14 @@ func (s *Server) startBackgroundTasks() {
 				log.Printf("Load balancer updated with %d models", len(s.cfgManager.GetModels()))
 			case "concurrency":
 				if cc, ok := event.Data.(config.ConcurrencyConfig); ok {
-					s.limiter.UpdateLimits(cc.GlobalLimit, cc.UserLimit)
-					log.Printf("Concurrency limiter updated: global=%d, user=%d", cc.GlobalLimit, cc.UserLimit)
+					s.limiter.UpdateLimits(cc.UserLimit)
+					log.Printf("Concurrency limiter updated: user=%d", cc.UserLimit)
 				}
 			}
 			if event.Type == "all" {
 				cc := s.cfgManager.GetConcurrency()
-				s.limiter.UpdateLimits(cc.GlobalLimit, cc.UserLimit)
-				log.Printf("Concurrency limiter updated (full reload): global=%d, user=%d", cc.GlobalLimit, cc.UserLimit)
+				s.limiter.UpdateLimits(cc.UserLimit)
+				log.Printf("Concurrency limiter updated (full reload): user=%d", cc.UserLimit)
 			}
 		}
 	}()

@@ -61,12 +61,13 @@ type ModelConfig struct {
 }
 
 type BackendConfig struct {
-	ID        string `yaml:"id" validate:"required"`
-	BaseURL   string `yaml:"base_url" validate:"required,url"`
-	APIKey    string `yaml:"api_key"`
-	ModelName string `yaml:"model_name"`
-	Weight    int    `yaml:"weight" validate:"min=0"`
-	Enabled   bool   `yaml:"enabled"`
+	ID             string `yaml:"id" validate:"required"`
+	BaseURL        string `yaml:"base_url" validate:"required,url"`
+	APIKey         string `yaml:"api_key"`
+	ModelName      string `yaml:"model_name"`
+	Weight         int    `yaml:"weight" validate:"min=0"`
+	Enabled        bool   `yaml:"enabled"`
+	MaxConcurrency int    `yaml:"max_concurrency" validate:"min=0"` // 该后端最大并发请求数，0 表示不限制
 }
 
 type TimeRangeConfig struct {
@@ -120,8 +121,7 @@ func (s SSOConfig) GetTokenURL() string {
 }
 
 type ConcurrencyConfig struct {
-	GlobalLimit int `yaml:"global_limit" validate:"min=0"`
-	UserLimit   int `yaml:"user_limit" validate:"min=0"`
+	UserLimit int `yaml:"user_limit" validate:"min=0"` // 每个用户最大并发请求数，0 表示不限制
 }
 
 // Validate 校验配置
