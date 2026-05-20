@@ -129,12 +129,13 @@ func (h *ModelHandler) Create(c *gin.Context) {
 			return
 		}
 		backend := &entity.Backend{
-			ID:        backendInput.ID,
-			ModelID:   model.ID,
-			BaseURL:   backendInput.BaseURL,
-			ModelName: backendInput.ModelName,
-			Weight:    backendInput.Weight,
-			Enabled:   backendInput.Enabled,
+			ID:             backendInput.ID,
+			ModelID:        model.ID,
+			BaseURL:        backendInput.BaseURL,
+			ModelName:      backendInput.ModelName,
+			Weight:         backendInput.Weight,
+			Enabled:        backendInput.Enabled,
+			MaxConcurrency: backendInput.MaxConcurrency,
 		}
 		if backend.Weight == 0 {
 			backend.Weight = 1
@@ -260,13 +261,14 @@ func (h *ModelHandler) CreateBackend(c *gin.Context) {
 	}
 
 	backend := &entity.Backend{
-		ID:        req.ID,
-		ModelID:   modelID,
-		BaseURL:   req.BaseURL,
-		APIKey:    req.APIKey,
-		ModelName: req.ModelName,
-		Weight:    req.Weight,
-		Enabled:   req.Enabled,
+		ID:             req.ID,
+		ModelID:        modelID,
+		BaseURL:        req.BaseURL,
+		APIKey:         req.APIKey,
+		ModelName:      req.ModelName,
+		Weight:         req.Weight,
+		Enabled:        req.Enabled,
+		MaxConcurrency: req.MaxConcurrency,
 	}
 
 	if backend.Weight == 0 {
@@ -315,6 +317,7 @@ func (h *ModelHandler) UpdateBackend(c *gin.Context) {
 	if req.Enabled != nil {
 		backend.Enabled = *req.Enabled
 	}
+	backend.MaxConcurrency = req.MaxConcurrency
 
 	if err := h.backendStore.Update(backend); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

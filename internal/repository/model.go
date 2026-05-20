@@ -36,14 +36,15 @@ type ModelUpdateRequest struct {
 }
 
 type BackendCreateInput struct {
-	ID        string `json:"id" binding:"required"`
-	Name      string `json:"name"`
-	BaseURL   string `json:"base_url" binding:"required,url"`
-	APIKey    string `json:"api_key"`
-	ModelName string `json:"model_name"`
-	Weight    int    `json:"weight"`
-	Region    string `json:"region"`
-	Enabled   bool   `json:"enabled"`
+	ID             string `json:"id" binding:"required"`
+	Name           string `json:"name"`
+	BaseURL        string `json:"base_url" binding:"required,url"`
+	APIKey         string `json:"api_key"`
+	ModelName      string `json:"model_name"`
+	Weight         int    `json:"weight"`
+	Region         string `json:"region"`
+	Enabled        bool   `json:"enabled"`
+	MaxConcurrency int    `json:"max_concurrency"`
 }
 
 type GatewayImportRequest struct {
