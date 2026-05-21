@@ -382,6 +382,16 @@ func (cm *ConfigManager) UpdateFrontend(frontend FrontendConfig) error {
 	})
 }
 
+func (cm *ConfigManager) UpdateTimeoutsAndFrontend(readTimeout, writeTimeout, idleTimeout time.Duration, frontend FrontendConfig) error {
+	return cm.updateAndNotify("all", nil, func(c *Config) error {
+		c.Server.ReadTimeout = readTimeout
+		c.Server.WriteTimeout = writeTimeout
+		c.Server.IdleTimeout = idleTimeout
+		c.Frontend = frontend
+		return nil
+	})
+}
+
 func (cm *ConfigManager) UpdateModels(models []ModelConfig) error {
 	return cm.updateAndNotify("models", models, func(c *Config) error {
 		c.Models = models

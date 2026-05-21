@@ -27,6 +27,17 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=6"`
 }
 
+type RefinedServerConfigJSON struct {
+	ReadTimeout  string `json:"read_timeout" binding:"required"`
+	WriteTimeout string `json:"write_timeout" binding:"required"`
+	IdleTimeout  string `json:"idle_timeout" binding:"required"`
+}
+
+type RefinedSystemConfigJSON struct {
+	Server   RefinedServerConfigJSON `json:"server" binding:"required"`
+	Frontend config.FrontendConfig   `json:"frontend" binding:"required"`
+}
+
 type QuotaService interface {
 	GetQuotaStats(userID uuid.UUID, policyName string) (map[string]interface{}, error)
 }
@@ -120,6 +131,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		config.PUT("/frontend", h.UpdateFrontendConfig)
 		config.GET("/concurrency", h.GetConcurrencyConfig)
 		config.PUT("/concurrency", h.UpdateConcurrencyConfig)
+		config.GET("/system", h.GetSystemConfig)
+		config.PUT("/system", h.UpdateSystemConfig)
 
 		// /admin/access-logs
 		admin.GET("/access-logs", h.GetAllAccessLogs)
@@ -789,4 +802,51 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "password changed successfully"})
+}
+
+func (h *Handler) GetSystemConfig(c *gin.Context) {
+	cfg := h.cm.GetConfig()
+	c.JSON(http.StatusOK, gin.H{
+		"data": RefinedSystemConfigJSON{
+			Server: RefinedServerConfigJSON{
+				ReadTimeout:  cfg.Server.ReadTimeout.String(),
+				WriteTimeout: cfg.Server.WriteTimeout.String(),
+				IdleTimeout:  cfg.Server.IdleTimeout.String(),
+			},
+			Frontend: cfg.Frontend,
+		},
+	})
+}
+
+func (h *Handler) UpdateSystemConfig(c *gin.Context) {
+	var req RefinedSystemConfigJSON
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	readTimeout, err := time.ParseDuration(req.Server.ReadTimeout)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid read_timeout: " + err.Error()})
+		return
+	}
+
+	writeTimeout, err := time.ParseDuration(req.Server.WriteTimeout)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid write_timeout: " + err.Error()})
+		return
+	}
+
+	idleTimeout, err := time.ParseDuration(req.Server.IdleTimeout)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid idle_timeout: " + err.Error()})
+		return
+	}
+
+	if err := h.cm.UpdateTimeoutsAndFrontend(readTimeout, writeTimeout, idleTimeout, req.Frontend); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save configuration: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "success", "data": req})
 }
