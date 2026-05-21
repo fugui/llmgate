@@ -71,6 +71,7 @@ CREATE TABLE api_keys (
     expires_at DATETIME,
     last_used_at DATETIME,
     total_tokens_used INTEGER DEFAULT 0,
+    plain_key TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)

@@ -44,10 +44,10 @@ type JWTConfig struct {
 }
 
 type LogConfig struct {
-	Path             string `yaml:"path"`
-	RetentionDays    int    `yaml:"retention_days" validate:"min=0"`
-	LogPayloads      bool   `yaml:"log_payloads"`
-	DebugRawPayloads string `yaml:"debug_raw_payloads" validate:"oneof=none error full"`
+	Path          string `yaml:"path"`
+	RetentionDays int    `yaml:"retention_days" validate:"min=0"`
+	LogPayloads   bool   `yaml:"log_payloads"`
+	RawDumps      string `yaml:"raw_dumps" validate:"oneof=none error full"`
 }
 
 type ModelConfig struct {
@@ -206,8 +206,8 @@ func setDefaults(cfg *Config) {
 	if cfg.Logs.RetentionDays == 0 {
 		cfg.Logs.RetentionDays = 7
 	}
-	if cfg.Logs.DebugRawPayloads == "" {
-		cfg.Logs.DebugRawPayloads = "none"
+	if cfg.Logs.RawDumps == "" {
+		cfg.Logs.RawDumps = "none"
 	}
 	if cfg.SSO.Enabled && cfg.SSO.EmailClaim == "" {
 		cfg.SSO.EmailClaim = "email"

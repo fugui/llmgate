@@ -195,7 +195,7 @@ go test ./test/scenarios/... -cover
 
 ### v0.7.0 (2026-04)
 - ✨ 新增对 Anthropic 协议的高级转换与兼容，完美支持 Claude Code 的 Tool Use 机制
-- ✨ 引入并发安全的无损 RAW Dump 调试诊断功能，支持 `debug_raw_payloads` 配置（`none`, `error`, `full`）
+- ✨ 引入并发安全的无损 RAW Dump 调试诊断功能，支持 `raw_dumps` 配置（`none`, `error`, `full`）
 - 🐛 修复了后端 LLM 返回 `tool_calls` 时流式响应的提前 `stop` 异常
 - ♻️ 增强大模型工具容错，执行失败的 Tool 强制注入 `[Error]` 前缀标识
 - ♻️ 拆分重组文档结构，将配置、API和部署说明归档入 `docs` 目录

@@ -116,7 +116,7 @@ logs:
   path: "logs"              # 日志目录
   retention_days: 7         # 日志保留天数
   log_payloads: false     # 是否记录完整的请求和响应内容（会导致日志文件很大）
-  debug_raw_payloads: "none" # 是否记录协议转换过程中的原始流量 payload ("none", "error", "full")。默认 none。error 表示仅在出现 400 级别错误时落盘， full 表示全部落盘。
+  raw_dumps: "none" # 是否记录协议转换过程中的原始流量 payload ("none", "error", "full")。默认 none。error 表示仅在出现 400 级别错误时落盘， full 表示全部落盘。
 
 # 并发控制配置
 concurrency:

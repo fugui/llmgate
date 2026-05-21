@@ -35,7 +35,7 @@ func TestUpdateTimeoutsAndFrontend(t *testing.T) {
 			ExpireHours: 24,
 		},
 		Logs: LogConfig{
-			DebugRawPayloads: "none",
+			RawDumps: "none",
 		},
 	}
 

@@ -156,7 +156,7 @@ func (s *Server) initServices() {
 
 	s.proxyInstance = proxy.NewProxy(s.lb, s.quotaService, s.usageService, s.modelStore, s.backendStore, s.userStore)
 
-	trafficDumper := logger.NewTrafficDumper(s.cfg.Logs.Path, s.cfg.Logs.DebugRawPayloads)
+	trafficDumper := logger.NewTrafficDumper(s.cfg.Logs.Path, s.cfg.Logs.RawDumps)
 	s.proxyInstance.SetTrafficDumper(trafficDumper)
 
 	s.dashboardService.SetConcurrencyLimiter(s.limiter)

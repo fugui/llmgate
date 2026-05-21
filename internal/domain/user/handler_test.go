@@ -43,7 +43,7 @@ func TestSystemConfigHandlers(t *testing.T) {
 			ExpireHours: 24,
 		},
 		Logs: config.LogConfig{
-			DebugRawPayloads: "none",
+			RawDumps: "none",
 		},
 	}
 	cm := config.NewManager(initialCfg, tmpPath)
