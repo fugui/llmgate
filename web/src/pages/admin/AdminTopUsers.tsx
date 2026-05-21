@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Empty, message } from 'antd';
-import api from '../api';
-import TopList from '../components/dashboard/TopList';
+import api from '../../api';
+import TopList from '../../components/dashboard/TopList';
 
 interface TopUser7d {
   user_id: string;

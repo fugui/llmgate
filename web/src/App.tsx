@@ -9,9 +9,9 @@ import Chat from './pages/Chat';
 import UsageStats from './pages/UsageStats';
 import DashboardStats from './pages/DashboardStats';
 import APIKeyManage from './pages/APIKeyManage';
-import Admin from './pages/Admin';
-import BackendManage from './pages/BackendManage';
+import Admin from './pages/admin';
 import api from './api';
+
 import './App.css';
 
 const App: React.FC = () => {
@@ -43,7 +43,6 @@ const App: React.FC = () => {
             <Route path="keys" element={<APIKeyManage />} />
             <Route path="dashboard" element={<DashboardStats />} />
             <Route path="admin" element={<Navigate to="/admin/users" replace />} />
-            <Route path="admin/models/:modelId/backends" element={<BackendManage />} />
             <Route path="admin/:tab" element={<Admin />} />
           </Route>
           {/* 默认路由 - 捕获所有未匹配的路径 */}

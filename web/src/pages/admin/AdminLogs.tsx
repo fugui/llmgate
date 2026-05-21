@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Button } from 'antd';
 import { SyncOutlined } from '@ant-design/icons';
-import api from '../api';
-import AccessLogsTable from '../components/AccessLogsTable';
+import api from '../../api';
+import AccessLogsTable from '../../components/AccessLogsTable';
 
 const AdminLogs: React.FC = () => {
   const [accessLogs, setAccessLogs] = useState<any[]>([]);
