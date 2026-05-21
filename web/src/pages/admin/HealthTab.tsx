@@ -91,12 +91,6 @@ const HealthTab: React.FC = () => {
       },
     },
     {
-      title: '名称',
-      dataIndex: 'name',
-      key: 'name',
-      render: (name: string) => name || '-',
-    },
-    {
       title: 'URL',
       dataIndex: 'base_url',
       key: 'base_url',
@@ -145,6 +139,12 @@ const HealthTab: React.FC = () => {
         }
         return active > 0 ? <Tag color="blue">{active}</Tag> : '-';
       },
+    },
+    {
+      title: '最大并发',
+      dataIndex: 'max_concurrency',
+      key: 'max_concurrency',
+      render: (max: number) => max > 0 ? <Tag color="orange">{max}</Tag> : <Tag color="default">无限制</Tag>,
     },
     {
       title: '失败次数',
