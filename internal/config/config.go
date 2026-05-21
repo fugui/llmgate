@@ -132,7 +132,25 @@ func (c *Config) Validate() error {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		if os.IsNotExist(err) {
+			// Auto-create a minimal default config.yaml
+			defaultConfig := []byte(`# Auto-generated minimal config.yaml
+server:
+  port: 8080
+  mode: release
+database:
+  path: modelgate.db
+jwt:
+  secret: default-secret-change-in-production
+  expire_hours: 24
+`)
+			if writeErr := os.WriteFile(path, defaultConfig, 0644); writeErr != nil {
+				return nil, fmt.Errorf("config file not found, and failed to create default: %w", writeErr)
+			}
+			data = defaultConfig
+		} else {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
 	}
 
 	var cfg Config
