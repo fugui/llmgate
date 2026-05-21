@@ -217,86 +217,88 @@ const SystemTab: React.FC = () => {
               onFinish={handleSaveAll}
             >
               <div style={{ minHeight: '400px', padding: '0 8px' }}>
-                {/* Block 1: 前端与基础配置 */}
-                <div style={{ marginBottom: '32px' }}>
-                  <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
-                      <SettingOutlined style={{ marginRight: '8px' }} /> 前端与基础配置
-                    </span>
-                  </Divider>
-                  
-                  <Form.Item
-                    name={['frontend', 'feedback_url']}
-                    label="用户反馈链接"
-                    rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
-                    extra="将在前端导航或帮助菜单中展示，方便用户反馈问题。"
-                  >
-                    <Input placeholder="如：https://feedback.example.com" size="large" />
-                  </Form.Item>
-
-                  <Form.Item
-                    name={['frontend', 'dev_manual_url']}
-                    label="开发者手册链接"
-                    rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
-                    extra="提供给接入人员的 API 参考或系统使用说明文档。"
-                  >
-                    <Input placeholder="如：https://docs.example.com" size="large" />
-                  </Form.Item>
-
-                  <Form.Item
-                    name={['frontend', 'registration_enabled']}
-                    label="开放自助注册"
-                    valuePropName="checked"
-                    extra="开启后，登录页将显示注册按钮。注册后的账号为‘待审核’状态，需管理员审核启用后方可使用。"
-                  >
-                    <Switch checkedChildren="已开放" unCheckedChildren="已关闭" />
-                  </Form.Item>
-
-                  <Form.Item label="SSO 单点登录状态" style={{ marginTop: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <Switch checked={ssoEnabled} disabled checkedChildren="启用" unCheckedChildren="禁用" />
-                      <span style={{ fontSize: '13px', color: '#8c8c8c' }}>
-                        {ssoEnabled ? '已启用（SSO 状态由服务器配置文件决定，在此仅作展示）' : '未启用（可在 server.sso 中配置启用）'}
+                <Row gutter={32}>
+                  {/* Column 1: 前端与基础配置 */}
+                  <Col span={12}>
+                    <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
+                        <SettingOutlined style={{ marginRight: '8px' }} /> 前端与基础配置
                       </span>
-                    </div>
-                  </Form.Item>
-                </div>
+                    </Divider>
+                    
+                    <Form.Item
+                      name={['frontend', 'feedback_url']}
+                      label="用户反馈链接"
+                      rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
+                      extra="将在前端导航或帮助菜单中展示，方便用户反馈。"
+                    >
+                      <Input placeholder="如：https://feedback.example.com" size="large" />
+                    </Form.Item>
 
-                {/* Block 2: 服务核心超时配置 */}
-                <div>
-                  <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
-                      <HourglassOutlined style={{ marginRight: '8px' }} /> 服务核心超时配置
-                    </span>
-                  </Divider>
-                  
-                  <Form.Item
-                    name={['server', 'read_timeout']}
-                    label="读取请求超时 (Read Timeout)"
-                    rules={[{ required: true, message: '请输入读取请求超时时长' }, { validator: validateDuration }]}
-                    extra="服务器读取完整请求体（包含流式上传等数据）的最大允许时间。如：60s"
-                  >
-                    <Input placeholder="如：60s" size="large" />
-                  </Form.Item>
+                    <Form.Item
+                      name={['frontend', 'dev_manual_url']}
+                      label="开发者手册链接"
+                      rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
+                      extra="提供给接入人员的 API 参考或系统使用说明文档。"
+                    >
+                      <Input placeholder="如：https://docs.example.com" size="large" />
+                    </Form.Item>
 
-                  <Form.Item
-                    name={['server', 'write_timeout']}
-                    label="写入响应超时 (Write Timeout)"
-                    rules={[{ required: true, message: '请输入写入响应超时时长' }, { validator: validateDuration }]}
-                    extra="服务器向客户端写入响应数据的最大允许时间。为支持超长大模型流式输出，建议设为较长值（如 30m）。"
-                  >
-                    <Input placeholder="如：30m" size="large" />
-                  </Form.Item>
+                    <Form.Item
+                      name={['frontend', 'registration_enabled']}
+                      label="开放自助注册"
+                      valuePropName="checked"
+                      extra="开启后登录页显示注册。账号需管理员审核后方可使用。"
+                    >
+                      <Switch checkedChildren="已开放" unCheckedChildren="已关闭" />
+                    </Form.Item>
 
-                  <Form.Item
-                    name={['server', 'idle_timeout']}
-                    label="连接空闲超时 (Idle Timeout)"
-                    rules={[{ required: true, message: '请输入连接空闲超时时长' }, { validator: validateDuration }]}
-                    extra="当启用 Keep-Alive 时，两个连续请求之间的最长等待时间。如：300s"
-                  >
-                    <Input placeholder="如：300s" size="large" />
-                  </Form.Item>
-                </div>
+                    <Form.Item label="SSO 单点登录状态" style={{ marginTop: '24px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <Switch checked={ssoEnabled} disabled checkedChildren="启用" unCheckedChildren="禁用" />
+                        <span style={{ fontSize: '13px', color: '#8c8c8c' }}>
+                          {ssoEnabled ? '已启用（由服务器配置决定）' : '未启用（可在 server.sso 中配置）'}
+                        </span>
+                      </div>
+                    </Form.Item>
+                  </Col>
+
+                  {/* Column 2: 服务核心超时配置 */}
+                  <Col span={12}>
+                    <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
+                        <HourglassOutlined style={{ marginRight: '8px' }} /> 服务核心超时配置
+                      </span>
+                    </Divider>
+                    
+                    <Form.Item
+                      name={['server', 'read_timeout']}
+                      label="读取请求超时 (Read Timeout)"
+                      rules={[{ required: true, message: '请输入读取请求超时时长' }, { validator: validateDuration }]}
+                      extra="服务器读取完整请求体（包含流式上传等）的最大允许时间。如：60s"
+                    >
+                      <Input placeholder="如：60s" size="large" />
+                    </Form.Item>
+
+                    <Form.Item
+                      name={['server', 'write_timeout']}
+                      label="写入响应超时 (Write Timeout)"
+                      rules={[{ required: true, message: '请输入写入响应超时时长' }, { validator: validateDuration }]}
+                      extra="服务器向客户端写入响应的最大允许时间。流式输出建议设为较长值（如 30m）。"
+                    >
+                      <Input placeholder="如：30m" size="large" />
+                    </Form.Item>
+
+                    <Form.Item
+                      name={['server', 'idle_timeout']}
+                      label="连接空闲超时 (Idle Timeout)"
+                      rules={[{ required: true, message: '请输入连接空闲超时时长' }, { validator: validateDuration }]}
+                      extra="启用 Keep-Alive 时，两个连续请求之间的最长等待时间。如：300s"
+                    >
+                      <Input placeholder="如：300s" size="large" />
+                    </Form.Item>
+                  </Col>
+                </Row>
               </div>
 
               <div className="config-footer">
