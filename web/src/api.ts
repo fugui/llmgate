@@ -23,7 +23,14 @@ api.interceptors.request.use(
 
 // Add response interceptor to handle 401 errors globally
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Check if a new token is returned under sliding expiration
+    const newToken = response.headers['x-refresh-token'];
+    if (newToken) {
+      localStorage.setItem('token', newToken);
+    }
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       // Clear authentication data

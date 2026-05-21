@@ -80,3 +80,27 @@ func (m *JWTManager) Validate(tokenString string) (*Claims, error) {
 
 	return nil, ErrInvalidToken
 }
+
+// ShouldRefresh 判断 Token 是否需要刷新（例如：已过去总有效时间的 75%，即剩余有效时间少于等于 25%）
+func (m *JWTManager) ShouldRefresh(claims *Claims) bool {
+	if claims == nil || claims.ExpiresAt == nil {
+		return false
+	}
+	expiresAt := claims.ExpiresAt.Time
+	totalDuration := time.Duration(m.expireHours) * time.Hour
+	remaining := time.Until(expiresAt)
+	// 如果剩余时间少于等于总时长的 25%（且 Token 尚未过期），则需要刷新
+	return remaining > 0 && remaining <= totalDuration/4
+}
+
+// RefreshToken 根据旧的 Claims 生成新的 Token
+func (m *JWTManager) RefreshToken(claims *Claims) (string, error) {
+	user := &entity.User{
+		ID:    claims.UserID,
+		Email: claims.Email,
+		Name:  claims.Name,
+		Role:  claims.Role,
+	}
+	return m.Generate(user)
+}
+

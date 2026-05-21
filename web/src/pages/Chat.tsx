@@ -92,6 +92,12 @@ const Chat: React.FC = () => {
         signal: abortControllerRef.current.signal,
       });
 
+      // Check if a new token is returned under sliding expiration
+      const newToken = response.headers.get('X-Refresh-Token');
+      if (newToken) {
+        localStorage.setItem('token', newToken);
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error?.message || `请求失败: ${response.status}`);

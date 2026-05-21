@@ -36,6 +36,15 @@ func AuthMiddleware(jwtManager *auth.JWTManager) gin.HandlerFunc {
 			return
 		}
 
+		// 检查是否需要刷新 Token (滑动过期)
+		if jwtManager.ShouldRefresh(claims) {
+			newToken, err := jwtManager.RefreshToken(claims)
+			if err == nil {
+				c.Header("X-Refresh-Token", newToken)
+				c.Header("Access-Control-Expose-Headers", "X-Refresh-Token")
+			}
+		}
+
 		c.Set(ContextKeyUser, claims)
 		c.Next()
 	}
@@ -79,6 +88,15 @@ func AuthMiddlewareWithUserValidation(jwtManager *auth.JWTManager, userStore *en
 		if !user.Enabled {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user disabled"})
 			return
+		}
+
+		// 检查是否需要刷新 Token (滑动过期)
+		if jwtManager.ShouldRefresh(claims) {
+			newToken, err := jwtManager.Generate(user)
+			if err == nil {
+				c.Header("X-Refresh-Token", newToken)
+				c.Header("Access-Control-Expose-Headers", "X-Refresh-Token")
+			}
 		}
 
 		c.Set(ContextKeyUser, claims)

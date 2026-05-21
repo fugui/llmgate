@@ -105,6 +105,15 @@ func ProxyAuthMiddleware(
 			return
 		}
 
+		// 检查是否需要刷新 Token (滑动过期)
+		if jwtManager.ShouldRefresh(claims) {
+			newToken, err := jwtManager.Generate(user)
+			if err == nil {
+				c.Header("X-Refresh-Token", newToken)
+				c.Header("Access-Control-Expose-Headers", "X-Refresh-Token")
+			}
+		}
+
 		// JWT 彻底验证成功
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyAuthType, AuthTypeJWT)
