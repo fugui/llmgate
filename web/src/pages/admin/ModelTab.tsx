@@ -231,11 +231,9 @@ const ModelTab: React.FC = () => {
     setBackendModalTitle('编辑后端');
     backendForm.setFieldsValue({
       id: backend.id,
-      name: backend.name,
       base_url: backend.base_url,
       model_name: backend.model_name,
       weight: backend.weight,
-      region: backend.region,
       enabled: backend.enabled,
       max_concurrency: backend.max_concurrency ?? 0,
     });
@@ -278,7 +276,6 @@ const ModelTab: React.FC = () => {
     try {
       await api.put(`/api/v1/admin/models/${encodeURIComponent(selectedModelId)}/backends/${encodeURIComponent(backend.id)}`, {
         ...backend,
-        region: backend.region,
         enabled: !backend.enabled,
       });
       messageApi.success(backend.enabled ? '后端已禁用' : '后端已启用');
@@ -568,13 +565,6 @@ const ModelTab: React.FC = () => {
           </Form.Item>
 
           <Form.Item
-            name="name"
-            label="名称"
-          >
-            <Input placeholder="显示名称（可选）" />
-          </Form.Item>
-
-          <Form.Item
             name="base_url"
             label="BaseURL"
             rules={[
@@ -617,14 +607,6 @@ const ModelTab: React.FC = () => {
             extra="该后端最大并发请求数，0 表示不限制（根据后端服务器承载能力设置）"
           >
             <InputNumber min={0} max={10000} style={{ width: '100%' }} placeholder="如：5（0=不限制）" />
-          </Form.Item>
-
-          <Form.Item
-            name="region"
-            label="Region"
-            extra="地区标识（可选），如：cn-north-1, us-west-2"
-          >
-            <Input placeholder="如：cn-north-1" />
           </Form.Item>
 
           <Form.Item
