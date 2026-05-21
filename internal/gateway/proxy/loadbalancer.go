@@ -71,11 +71,12 @@ func (lb *RoundRobinBalancer) AddBackend(modelID string, backend Backend) {
 	// 初始化健康状态 - 使用 backend ID 作为 key
 	if _, exists := lb.health[backend.ID]; !exists {
 		lb.health[backend.ID] = &BackendHealth{
-			BackendID: backend.ID,
-			URL:       backend.URL,
-			ModelName: backend.ModelName,
-			Healthy:   true,
-			LastCheck: time.Now(),
+			BackendID:      backend.ID,
+			URL:            backend.URL,
+			ModelName:      backend.ModelName,
+			Healthy:        true,
+			LastCheck:      time.Now(),
+			MaxConcurrency: backend.MaxConcurrency,
 		}
 	}
 
@@ -143,21 +144,22 @@ func (lb *RoundRobinBalancer) tryGetBackend(lookupModel string, requestedModel s
 
 	// 所有后端都不健康或满载
 	// 如果所有健康后端都满载，返回 false
-	allBusy := true
+	healthyCount := 0
+	busyCount := 0
 	for i := 0; i < len(backends); i++ {
 		health, ok := lb.health[backends[i].ID]
 		if !ok || !health.Healthy {
 			continue
 		}
-		// 存在健康的后端但都满载
+		healthyCount++
 		if health.MaxConcurrency > 0 {
-			allBusy = true
-			break
+			current := atomic.LoadInt32(&health.ActiveConcurrency)
+			if current >= int32(health.MaxConcurrency) {
+				busyCount++
+			}
 		}
-		// 存在健康且不限制并发的后端，说明没满载
-		allBusy = false
-		break
 	}
+	allBusy := healthyCount > 0 && busyCount == healthyCount
 
 	if allBusy {
 		if lookupModel != requestedModel {
