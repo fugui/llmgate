@@ -16,7 +16,6 @@ const SystemTab: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [ssoEnabled, setSsoEnabled] = useState(false);
   const [stats, setStats] = useState({
     usersCount: 0,
     modelsCount: 0,
@@ -28,10 +27,7 @@ const SystemTab: React.FC = () => {
 
   const fetchConfig = async () => {
     try {
-      const [sysRes, pubRes] = await Promise.all([
-        api.get('/api/v1/admin/config/system'),
-        api.get('/api/v1/config/frontend'),
-      ]);
+      const sysRes = await api.get('/api/v1/admin/config/system');
       const data = sysRes.data.data;
       form.setFieldsValue({
         frontend: {
@@ -45,7 +41,6 @@ const SystemTab: React.FC = () => {
           idle_timeout: data.server.idle_timeout,
         }
       });
-      setSsoEnabled(pubRes.data.data.sso_enabled || false);
     } catch {
       messageApi.error('获取系统配置失败');
     }
@@ -187,6 +182,20 @@ const SystemTab: React.FC = () => {
           border: 1px solid rgba(0, 0, 0, 0.05);
           background: #ffffff;
         }
+        .premium-block-card {
+          border: 1px solid #f0f0f0;
+          border-radius: 12px;
+          background: #fafafa;
+          padding: 24px 24px 12px 24px;
+          height: 100%;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.01);
+          transition: all 0.3s ease;
+        }
+        .premium-block-card:hover {
+          border-color: #e6f7ff;
+          background: #fcfdfe;
+          box-shadow: 0 4px 16px rgba(24, 144, 255, 0.04);
+        }
         .config-footer {
           margin-top: 24px;
           padding: 16px 24px;
@@ -194,8 +203,8 @@ const SystemTab: React.FC = () => {
           border-top: 1px solid #f0f0f0;
           border-radius: 0 0 16px 16px;
           display: flex;
-          justify-content: flex-end;
-          gap: 12px;
+          justify-content: center;
+          gap: 16px;
         }
       `}</style>
 
@@ -220,83 +229,78 @@ const SystemTab: React.FC = () => {
                 <Row gutter={32}>
                   {/* Column 1: 前端与基础配置 */}
                   <Col span={12}>
-                    <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
-                        <SettingOutlined style={{ marginRight: '8px' }} /> 前端与基础配置
-                      </span>
-                    </Divider>
-                    
-                    <Form.Item
-                      name={['frontend', 'feedback_url']}
-                      label="用户反馈链接"
-                      rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
-                      extra="将在前端导航或帮助菜单中展示，方便用户反馈。"
-                    >
-                      <Input placeholder="如：https://feedback.example.com" size="large" />
-                    </Form.Item>
-
-                    <Form.Item
-                      name={['frontend', 'dev_manual_url']}
-                      label="开发者手册链接"
-                      rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
-                      extra="提供给接入人员的 API 参考或系统使用说明文档。"
-                    >
-                      <Input placeholder="如：https://docs.example.com" size="large" />
-                    </Form.Item>
-
-                    <Form.Item
-                      name={['frontend', 'registration_enabled']}
-                      label="开放自助注册"
-                      valuePropName="checked"
-                      extra="开启后登录页显示注册。账号需管理员审核后方可使用。"
-                    >
-                      <Switch checkedChildren="已开放" unCheckedChildren="已关闭" />
-                    </Form.Item>
-
-                    <Form.Item label="SSO 单点登录状态" style={{ marginTop: '24px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <Switch checked={ssoEnabled} disabled checkedChildren="启用" unCheckedChildren="禁用" />
-                        <span style={{ fontSize: '13px', color: '#8c8c8c' }}>
-                          {ssoEnabled ? '已启用（由服务器配置决定）' : '未启用（可在 server.sso 中配置）'}
+                    <div className="premium-block-card">
+                      <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
+                          <SettingOutlined style={{ marginRight: '8px' }} /> 前端与基础配置
                         </span>
-                      </div>
-                    </Form.Item>
+                      </Divider>
+                      
+                      <Form.Item
+                        name={['frontend', 'feedback_url']}
+                        label="用户反馈链接"
+                        rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
+                        extra="将在前端导航或帮助菜单中展示，方便用户反馈。"
+                      >
+                        <Input placeholder="如：https://feedback.example.com" size="large" />
+                      </Form.Item>
+
+                      <Form.Item
+                        name={['frontend', 'dev_manual_url']}
+                        label="开发者手册链接"
+                        rules={[{ type: 'url', message: '请输入有效的URL（例如: https://example.com）' }]}
+                        extra="提供给接入人员的 API 参考或系统使用说明文档。"
+                      >
+                        <Input placeholder="如：https://docs.example.com" size="large" />
+                      </Form.Item>
+
+                      <Form.Item
+                        name={['frontend', 'registration_enabled']}
+                        label="开放自助注册"
+                        valuePropName="checked"
+                        extra="开启后登录页显示注册。账号需管理员审核后方可使用。"
+                      >
+                        <Switch checkedChildren="已开放" unCheckedChildren="已关闭" />
+                      </Form.Item>
+                    </div>
                   </Col>
 
                   {/* Column 2: 服务核心超时配置 */}
                   <Col span={12}>
-                    <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
-                        <HourglassOutlined style={{ marginRight: '8px' }} /> 服务核心超时配置
-                      </span>
-                    </Divider>
-                    
-                    <Form.Item
-                      name={['server', 'read_timeout']}
-                      label="读取请求超时 (Read Timeout)"
-                      rules={[{ required: true, message: '请输入读取请求超时时长' }, { validator: validateDuration }]}
-                      extra="服务器读取完整请求体（包含流式上传等）的最大允许时间。如：60s"
-                    >
-                      <Input placeholder="如：60s" size="large" />
-                    </Form.Item>
+                    <div className="premium-block-card">
+                      <Divider titlePlacement="left" style={{ margin: '0 0 24px 0' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 600, color: '#1890ff' }}>
+                          <HourglassOutlined style={{ marginRight: '8px' }} /> 服务核心超时配置
+                        </span>
+                      </Divider>
+                      
+                      <Form.Item
+                        name={['server', 'read_timeout']}
+                        label="读取请求超时 (Read Timeout)"
+                        rules={[{ required: true, message: '请输入读取请求超时时长' }, { validator: validateDuration }]}
+                        extra="服务器读取完整请求体（包含流式上传等）的最大允许时间。如：60s"
+                      >
+                        <Input placeholder="如：60s" size="large" />
+                      </Form.Item>
 
-                    <Form.Item
-                      name={['server', 'write_timeout']}
-                      label="写入响应超时 (Write Timeout)"
-                      rules={[{ required: true, message: '请输入写入响应超时时长' }, { validator: validateDuration }]}
-                      extra="服务器向客户端写入响应的最大允许时间。流式输出建议设为较长值（如 30m）。"
-                    >
-                      <Input placeholder="如：30m" size="large" />
-                    </Form.Item>
+                      <Form.Item
+                        name={['server', 'write_timeout']}
+                        label="写入响应超时 (Write Timeout)"
+                        rules={[{ required: true, message: '请输入写入响应超时时长' }, { validator: validateDuration }]}
+                        extra="服务器向客户端写入响应的最大允许时间。流式输出建议设为较长值（如 30m）。"
+                      >
+                        <Input placeholder="如：30m" size="large" />
+                      </Form.Item>
 
-                    <Form.Item
-                      name={['server', 'idle_timeout']}
-                      label="连接空闲超时 (Idle Timeout)"
-                      rules={[{ required: true, message: '请输入连接空闲超时时长' }, { validator: validateDuration }]}
-                      extra="启用 Keep-Alive 时，两个连续请求之间的最长等待时间。如：300s"
-                    >
-                      <Input placeholder="如：300s" size="large" />
-                    </Form.Item>
+                      <Form.Item
+                        name={['server', 'idle_timeout']}
+                        label="连接空闲超时 (Idle Timeout)"
+                        rules={[{ required: true, message: '请输入连接空闲超时时长' }, { validator: validateDuration }]}
+                        extra="启用 Keep-Alive 时，两个连续请求之间的最长等待时间。如：300s"
+                      >
+                        <Input placeholder="如：300s" size="large" />
+                      </Form.Item>
+                    </div>
                   </Col>
                 </Row>
               </div>
