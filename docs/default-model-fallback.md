@@ -13,28 +13,20 @@
 
 ## 配置方法
 
-在 `config.yaml` 中添加 `default_model` 字段：
+在 `config.yaml` 的配额策略（`quota_policies`）中为特定策略添加 `default_model` 字段：
 
 ```yaml
-# 配置默认模型
-default_model: "kimi2.5"
-
-models:
-  - id: kimi2.5
-    name: Kimi 2.5
-    enabled: true
-    backends:
-      - id: kimi2.5-backend
-        name: Kimi 后端
-        base_url: https://api.kimi.com/v1
-        api_key: sk-your-key
-        enabled: true
-
-  # 这个模型没有配置后端
-  - id: gpt-4
-    name: GPT-4
-    enabled: true
-    backends: []
+quota_policies:
+  - name: "default"
+    rate_limit: 60
+    rate_limit_window: 60
+    request_quota_daily: 500
+    models:
+      - "glm4.7"
+      - "kimi2.5"
+      - "qwen3.5-397b"
+    # 配置该策略的默认降级模型
+    default_model: "kimi2.5"
 ```
 
 ## 工作原理

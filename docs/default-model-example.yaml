@@ -8,12 +8,8 @@ server:
 database:
     path: modelgate.db
 
-# 配置默认模型：当请求的模型没有可用后端时，使用此模型作为 fallback
-# 示例场景：
-# 1. 客户端请求 "gpt-4"，但只配置了 kimi2.5 的后端
-# 2. 系统自动使用 kimi2.5 的后端来处理请求
-# 3. 日志会记录："using fallback model kimi2.5 for request model gpt-4"
-default_model: "kimi2.5"
+# 注意：default_model 不再在根路径下配置，而是配置在各配额策略（quota_policies）中。
+
 
 models:
     - id: kimi2.5
@@ -25,12 +21,11 @@ models:
         temperature: 0.7
       backends:
         - id: kimi2.5-gz-01
-          name: 广州节点-01
           base_url: https://api.kimi.com/v1
           api_key: sk-your-api-key
           model_name: kimi-for-coding
           weight: 20
-          region: guangzhou
+          max_concurrency: 5  # 最大并发限制 (0=不限制)
           enabled: true
 
     # 这个模型没有配置后端，请求它会 fallback 到 kimi2.5
@@ -49,7 +44,6 @@ models:
       enabled: true
       backends:
         - id: qwen3.5-prod
-          name: 生产节点
           base_url: http://qwen35.internal:8000
           api_key: ""
           model_name: qwen3.5-instruct
@@ -63,6 +57,7 @@ quota_policies:
       request_quota_daily: 500
       models:
         - '*'
+      default_model: "kimi2.5"    # 默认降级模型（当请求的模型无可用后端时自动 Fallback）
       description: 默认策略
 
 admin:

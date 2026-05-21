@@ -8,18 +8,13 @@ server:
   mode: "release"         # debug 或 release
   # 以下为可选的超时配置（使用默认值时可省略）
   read_timeout: 60s       # 读取请求超时（默认 60s）
-  write_timeout: 120s     # 写入响应超时（默认 120s）
+  write_timeout: 30m      # 写入响应超时（默认 30m，以支持长文本流式响应）
   idle_timeout: 300s      # 空闲连接超时（默认 300s）
   max_header_bytes: 1048576  # 请求头大小限制，单位字节（默认 1MB）
   shutdown_timeout: 30s   # 优雅关闭超时（默认 30s）
 
 database:
   path: "modelgate.db"      # SQLite 数据库文件路径
-
-# 默认模型 Fallback（可选）
-# 当客户端请求的模型没有可用后端时，自动使用此模型
-# 示例：客户端请求 "gpt-4" 但只配置了 kimi2.5 后端，系统自动使用 kimi2.5 处理
-#default_model: "kimi2.5"
 
 logs:
   path: "./logs"          # 日志目录
@@ -42,12 +37,11 @@ models:
     enabled: true
     backends:
       - id: "glm4.7-prod-01"
-        name: "北京节点-01"
         base_url: "http://glm4-7.internal:8000"
         api_key: "glm-api-key-xxx"
         model_name: "glm4"          # 后端实际模型名
         weight: 10                   # 权重（用于负载均衡）
-        region: "beijing"
+        max_concurrency: 0          # 最大并发请求数，0 表示不限制
 
   # 多实例负载均衡配置示例
   - id: "kimi2.5"
@@ -56,26 +50,23 @@ models:
     enabled: true
     backends:
       - id: "kimi2.5-gz-01"
-        name: "广州节点-01"
         base_url: "http://kimi25-gz-01.internal:8000"
         api_key: "moonshot-key-gz"
         model_name: "kimi2.5_guangzhou"
         weight: 20
-        region: "guangzhou"
+        max_concurrency: 10
       - id: "kimi2.5-gz-02"
-        name: "广州节点-02"
         base_url: "http://kimi25-gz-02.internal:8000"
         api_key: "moonshot-key-gz"
         model_name: "kimi2.5_guangzhou"
         weight: 20
-        region: "guangzhou"
+        max_concurrency: 10
       - id: "kimi2.5-bj-01"
-        name: "北京节点-01"
         base_url: "http://kimi25-bj-01.internal:8000"
         api_key: "moonshot-key-bj"
         model_name: "kimi2.5_beijing"
         weight: 15
-        region: "beijing"
+        max_concurrency: 5
 
 # 配额策略
 quota_policies:
@@ -89,6 +80,7 @@ quota_policies:
       - start: "18:00"
         end: "24:00"
     models: ["*"]               # "*" 表示所有模型
+    default_model: "kimi2.5"    # 默认降级模型（可选，当请求的模型无可用后端时自动 Fallback）
   - name: "vip"
     rate_limit: 300
     rate_limit_window: 60
@@ -103,8 +95,7 @@ frontend:
 
 # 并发控制
 concurrency:
-  global_limit: 100         # 全局最大并发请求数
-  user_limit: 10            # 每用户最大并发请求数
+  user_limit: 10            # 每个用户最大并发请求数，0 表示不限制
 
 # SSO 配置（可选）
 sso:
@@ -121,12 +112,11 @@ sso:
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `id` | 是 | 后端唯一标识 |
-| `name` | 否 | 后端显示名称 |
 | `base_url` | 是 | LLM 后端服务地址 |
 | `api_key` | 否 | 后端 API 认证密钥 |
 | `model_name` | 否 | 后端实际模型名称（转发时使用）|
 | `weight` | 否 | 负载均衡权重，默认 1 |
-| `region` | 否 | 地域标识 |
+| `max_concurrency` | 否 | 该后端最大并发请求数，0 表示不限制 |
 | `enabled` | 否 | 是否启用，默认 true |
 
 ### model_params 模型参数
