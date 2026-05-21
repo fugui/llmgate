@@ -246,8 +246,12 @@ func (h *Handler) List(c *gin.Context) {
 	if p, err := strconv.Atoi(c.DefaultQuery("page", "1")); err == nil && p > 0 {
 		page = p
 	}
-	if ps, err := strconv.Atoi(c.DefaultQuery("page_size", "20")); err == nil && ps > 0 && ps <= 100 {
-		pageSize = ps
+	if ps, err := strconv.Atoi(c.DefaultQuery("page_size", "20")); err == nil && ps > 0 {
+		if ps > 1000 {
+			pageSize = 1000
+		} else {
+			pageSize = ps
+		}
 	}
 
 	// 排序参数
