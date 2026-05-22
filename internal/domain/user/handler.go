@@ -127,7 +127,6 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		users.DELETE("/:id", h.Delete)
 		// /admin/config
 		config := admin.Group("/config")
-		config.PUT("/frontend", h.UpdateFrontendConfig)
 		config.GET("/system", h.GetSystemConfig)
 		config.PUT("/system", h.UpdateSystemConfig)
 
@@ -511,21 +510,6 @@ func (h *Handler) GetFrontendConfig(c *gin.Context) {
 	})
 }
 
-// UpdateFrontendConfig 更新前端系统配置 (Admin API)
-func (h *Handler) UpdateFrontendConfig(c *gin.Context) {
-	var req config.FrontendConfig
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.cm.UpdateFrontend(req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save configuration: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": req})
-}
 
 
 // ========== SSO 相关接口 ==========

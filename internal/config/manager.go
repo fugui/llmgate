@@ -12,7 +12,7 @@ import (
 
 // ConfigEvent 配置变更事件
 type ConfigEvent struct {
-	Type string      // "models", "policies", "all", "frontend"
+	Type string      // "models", "policies", "all"
 	Data interface{} // 可选的事件数据
 }
 
@@ -362,13 +362,6 @@ func (cm *ConfigManager) GetPolicyByName(name string) *PolicyConfig {
 	return nil
 }
 
-
-func (cm *ConfigManager) UpdateFrontend(frontend FrontendConfig) error {
-	return cm.updateAndNotify("frontend", frontend, func(c *Config) error {
-		c.Frontend = frontend
-		return nil
-	})
-}
 
 func (cm *ConfigManager) UpdateTimeoutsAndFrontend(readTimeout, writeTimeout, idleTimeout time.Duration, frontend FrontendConfig) error {
 	return cm.updateAndNotify("all", nil, func(c *Config) error {
