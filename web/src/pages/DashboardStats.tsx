@@ -53,9 +53,8 @@ interface DashboardData {
     };
     [key: string]: any;
   }[];
-  top_users: {
-    user_id: string;
-    username: string;
+  model_stats: {
+    model_id: string;
     request_count: number;
     input_tokens: number;
     output_tokens: number;
@@ -86,10 +85,10 @@ const DashboardStats: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const [statsRes, hourlyRes, topUsersRes, metricsRes, backendMetricsRes] = await Promise.all([
+      const [statsRes, hourlyRes, modelStatsRes, metricsRes, backendMetricsRes] = await Promise.all([
         api.get('/api/v1/dashboard/stats'),
         api.get('/api/v1/dashboard/hourly'),
-        api.get('/api/v1/dashboard/top-users'),
+        api.get('/api/v1/dashboard/models'),
         api.get('/api/v1/dashboard/metrics'),
         api.get('/api/v1/dashboard/backend-metrics'),
       ]);
@@ -113,12 +112,11 @@ const DashboardStats: React.FC = () => {
           }
           return stat;
         }),
-        top_users: (topUsersRes.data.data || []).map((u: any) => ({
-          user_id: u.user_id,
-          username: u.name || u.user_id,
-          request_count: u.request_count,
-          input_tokens: u.input_tokens || 0,
-          output_tokens: u.output_tokens || 0,
+        model_stats: (modelStatsRes.data.data || []).map((m: any) => ({
+          model_id: m.model_id,
+          request_count: m.request_count || 0,
+          input_tokens: m.input_tokens || 0,
+          output_tokens: m.output_tokens || 0,
         })),
 
         metrics_history: (metricsRes.data.data || []).map((m: any) => ({
@@ -174,7 +172,7 @@ const DashboardStats: React.FC = () => {
     return <Empty description="无法加载数据" />;
   }
 
-  const { summary, hourly_stats: hourlyStats, top_users: topUsers, metrics_history: metricsHistory, backend_metrics: backendMetrics, backend_ids: backendIds } = data;
+  const { summary, hourly_stats: hourlyStats, model_stats: modelStats, metrics_history: metricsHistory, backend_metrics: backendMetrics, backend_ids: backendIds } = data;
   const visibleBackends = selectedBackends.length > 0 ? selectedBackends : backendIds;
 
   const uniqueModels = Array.from(
@@ -210,10 +208,47 @@ const DashboardStats: React.FC = () => {
     </span>
   );
 
-  const topUserColumns = [
-    { title: '用户名', dataIndex: 'username', key: 'username', render: (_: any, record: any) => record.username || record.user_id },
-    { title: '请求数', dataIndex: 'request_count', key: 'request_count', sorter: (a: any, b: any) => (a.request_count || 0) - (b.request_count || 0) },
-    { title: 'Tokens', key: 'total_tokens', render: renderTokens, sorter: (a: any, b: any) => ((a.input_tokens || 0) + (a.output_tokens || 0)) - ((b.input_tokens || 0) + (b.output_tokens || 0)) },
+  const totalModelRequests = modelStats.reduce((sum, item) => sum + (item.request_count || 0), 0);
+
+  const modelColumns = [
+    {
+      title: '模型',
+      dataIndex: 'model_id',
+      key: 'model_id',
+      render: (text: string) => (
+        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#1890ff' }}>
+          {text}
+        </span>
+      ),
+    },
+    {
+      title: '请求数',
+      dataIndex: 'request_count',
+      key: 'request_count',
+      sorter: (a: any, b: any) => (a.request_count || 0) - (b.request_count || 0),
+    },
+    {
+      title: '请求占比',
+      key: 'percentage',
+      render: (_: any, record: any) => {
+        const pct = totalModelRequests > 0 ? ((record.request_count || 0) / totalModelRequests) * 100 : 0;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <span style={{ width: '45px', marginRight: '8px' }}>{pct.toFixed(1)}%</span>
+            <div style={{ flex: 1, height: '6px', backgroundColor: '#f5f5f5', borderRadius: '3px', overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', backgroundColor: '#1890ff', borderRadius: '3px' }} />
+            </div>
+          </div>
+        );
+      },
+      sorter: (a: any, b: any) => (a.request_count || 0) - (b.request_count || 0),
+    },
+    {
+      title: 'Tokens (输入/输出)',
+      key: 'tokens',
+      render: renderTokens,
+      sorter: (a: any, b: any) => ((a.input_tokens || 0) + (a.output_tokens || 0)) - ((b.input_tokens || 0) + (b.output_tokens || 0)),
+    },
   ];
 
 
@@ -301,16 +336,16 @@ const DashboardStats: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} lg={10}>
-          {topUsers.length > 0 && topUsers.some(u => u.request_count > 0) ? (
+          {modelStats.length > 0 && modelStats.some(m => m.request_count > 0) ? (
             <TopList
-              title="今日 TOP10 用户"
-              dataSource={topUsers.filter(u => u.request_count > 0).slice(0, 10)}
-              columns={topUserColumns as any}
-              rowKey="user_id"
+              title="今日模型请求 Token"
+              dataSource={modelStats.filter(m => m.request_count > 0)}
+              columns={modelColumns as any}
+              rowKey="model_id"
               scroll={{ y: 300 }}
             />
           ) : (
-            <Card title="今日 TOP10 用户">
+            <Card title="今日模型请求 Token">
               <Empty description="暂无数据" style={{ padding: '60px 0' }} />
             </Card>
           )}
