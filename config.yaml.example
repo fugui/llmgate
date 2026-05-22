@@ -118,11 +118,6 @@ logs:
   log_payloads: false     # 是否记录完整的请求和响应内容（会导致日志文件很大）
   raw_dumps: "none" # 是否记录协议转换过程中的原始流量 payload ("none", "error", "full")。默认 none。error 表示仅在出现 400 级别错误时落盘， full 表示全部落盘。
 
-# 并发控制配置
-concurrency:
-  user_limit: 10            # 每个用户最大并发请求数，0 表示不限制
-  # 说明：per-backend 并发限制在各后端的 max_concurrency 字段中配置
-
 # 前端配置
 frontend:
   feedback_url: "https://feedback.example.com"      # 用户反馈链接

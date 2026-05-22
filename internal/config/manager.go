@@ -12,7 +12,7 @@ import (
 
 // ConfigEvent 配置变更事件
 type ConfigEvent struct {
-	Type string      // "models", "policies", "all", "concurrency", "frontend"
+	Type string      // "models", "policies", "all", "frontend"
 	Data interface{} // 可选的事件数据
 }
 
@@ -362,18 +362,6 @@ func (cm *ConfigManager) GetPolicyByName(name string) *PolicyConfig {
 	return nil
 }
 
-func (cm *ConfigManager) GetConcurrency() ConcurrencyConfig {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return cm.cfg.Concurrency
-}
-
-func (cm *ConfigManager) UpdateConcurrency(concurrency ConcurrencyConfig) error {
-	return cm.updateAndNotify("concurrency", concurrency, func(c *Config) error {
-		c.Concurrency = concurrency
-		return nil
-	})
-}
 
 func (cm *ConfigManager) UpdateFrontend(frontend FrontendConfig) error {
 	return cm.updateAndNotify("frontend", frontend, func(c *Config) error {
@@ -444,7 +432,6 @@ func (cm *ConfigManager) deepCopyConfig(cfg *Config) *Config {
 		Admin:       cfg.Admin,
 		Logs:        cfg.Logs,
 		Frontend:    cfg.Frontend,
-		Concurrency: cfg.Concurrency,
 		SSO:         cfg.SSO,
 	}
 	if cfg.Models != nil {

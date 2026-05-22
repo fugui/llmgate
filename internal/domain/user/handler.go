@@ -125,12 +125,9 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		users.POST("", h.Create)
 		users.PUT("/:id", h.Update)
 		users.DELETE("/:id", h.Delete)
-
 		// /admin/config
 		config := admin.Group("/config")
 		config.PUT("/frontend", h.UpdateFrontendConfig)
-		config.GET("/concurrency", h.GetConcurrencyConfig)
-		config.PUT("/concurrency", h.UpdateConcurrencyConfig)
 		config.GET("/system", h.GetSystemConfig)
 		config.PUT("/system", h.UpdateSystemConfig)
 
@@ -530,40 +527,6 @@ func (h *Handler) UpdateFrontendConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": req})
 }
 
-// GetConcurrencyConfig 获取并发控制配置 (Admin API)
-func (h *Handler) GetConcurrencyConfig(c *gin.Context) {
-	concurrency := h.cm.GetConcurrency()
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"user_limit": concurrency.UserLimit,
-		},
-	})
-}
-
-// UpdateConcurrencyConfig 更新并发控制配置 (Admin API)
-func (h *Handler) UpdateConcurrencyConfig(c *gin.Context) {
-	var req struct {
-		UserLimit int `json:"user_limit"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if req.UserLimit < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "limit values cannot be negative"})
-		return
-	}
-
-	if err := h.cm.UpdateConcurrency(config.ConcurrencyConfig{
-		UserLimit: req.UserLimit,
-	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save configuration: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": req})
-}
 
 // ========== SSO 相关接口 ==========
 

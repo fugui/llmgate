@@ -93,10 +93,6 @@ frontend:
   dev_manual_url: "https://docs.example.com"
   registration_enabled: false   # 开放用户自助注册（注册后需管理员审核）
 
-# 并发控制
-concurrency:
-  user_limit: 10            # 每个用户最大并发请求数，0 表示不限制
-
 # SSO 配置（可选）
 sso:
   enabled: false

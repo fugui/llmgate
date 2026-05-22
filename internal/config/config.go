@@ -20,7 +20,6 @@ type Config struct {
 	Admin       AdminConfig       `yaml:"admin"`
 	Logs        LogConfig         `yaml:"logs"`
 	Frontend    FrontendConfig    `yaml:"frontend"`
-	Concurrency ConcurrencyConfig `yaml:"concurrency"`
 	SSO         SSOConfig         `yaml:"sso"`
 }
 
@@ -118,10 +117,6 @@ func (s SSOConfig) GetTokenURL() string {
 		return s.IssuerURL + "/oauth2/v2.0/token"
 	}
 	return s.IssuerURL + "/token"
-}
-
-type ConcurrencyConfig struct {
-	UserLimit int `yaml:"user_limit" validate:"min=0"` // 每个用户最大并发请求数，0 表示不限制
 }
 
 // Validate 校验配置
